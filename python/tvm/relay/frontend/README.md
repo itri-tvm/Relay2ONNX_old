@@ -23,10 +23,10 @@ Test ONNX Model list
 --------------------
 |Model|
 |-----|
-|MobileNet|
-|ResNet|
+|MobileNet_V2|
+|ResNet50|
 |SqueezeNet|
-|VGG|
+|VGG19|
 |AlexNet|
 |GoogleNet|
 |CaffeNet|
