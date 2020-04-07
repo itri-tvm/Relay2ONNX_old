@@ -37,7 +37,3 @@ Contribute to TVM
 -----------------
 TVM adopts apache committer model, we aim to create an open source project that is maintained and owned by the community.
 Checkout the [Contributor Guide](https://docs.tvm.ai/contribute/)
-
-Relay2ONNX
-----------
-There are 66 operator conversion written in /python/tvm/relay/frontend/to_onnx.py file. For some special ONNX operators, Gemm, Conv and Unsqueeze, I create three new partition graph Relay pass (in /src/relay/pass folder) to fuse their converted Relay operators back to original ONNX operator.In some case, if nn.bias_add is not simplified by TVM optimization, these operators can be fused back to original ONNX operator. For the same reason, fuse expand_dims operators to unsqueeze operator.
