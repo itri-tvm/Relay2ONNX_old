@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=invalid-name, unused-argument, missing-docstring, unused-import
+import string
 """
 Relay pass transformation infrastructure.
 """
@@ -84,10 +85,74 @@ def build_config(opt_level=2,
 @register_relay_node
 class FunctionPass(Pass):
     """A pass that works on each tvm.relay.Function in a module. A function
-    pass class should be created through `function_pass`.
+    pass class should b = DataType::Float(32)e created through `function_pass`.
     """
 
+def PartitionGraphByExpr(subexpr, func_name = False, device_type = 0, dtype = None):
+    """Partition a Relay graph to subgraph with AST.
 
+    Returns
+    -------
+    ret: tvm.relay.Pass
+        The registered pass that partitions the Relay function.
+    """
+    if dtype:
+        data_type = DataType(dtype)
+    else:
+        data_type = None
+    if func_name is None:
+        func_name = False
+    elif isinstance(func_name, str):
+        func_name = tvm.tir.StringImm(func_name)
+    return _transform.PartitionGraphByExpr(subexpr, func_name, device_type, data_type)
+
+def PartitionGraphInOrder(op_names, attrs = None, func_name = False, device_type = 0, dtype = None):
+    """Partition a Relay graph to subgraph with ordered operators.
+
+    Returns
+    -------
+    ret: tvm.relay.Pass
+        The registered pass that partitions the Relay function.
+    """
+    from tvm._ffi.runtime_ctypes import DataType
+    if dtype:
+        data_type = DataType(dtype)
+    else:
+        data_type = None
+    if func_name is None:
+        func_name = False
+    elif isinstance(func_name, str):
+        func_name = tvm.tir.StringImm(func_name)
+    return _transform.PartitionGraphInOrder(op_names, attrs, func_name, device_type, data_type)
+
+def PartitionGraphInUnorder(op_names, attrs = None, func_name = False, device_type = 0, dtype = None):
+    """Partition a Relay graph to subgraph with unordered operators.
+
+    Returns
+    -------
+    ret: tvm.relay.Pass
+        The registered pass that partitions the Relay function.
+    """
+        
+    from tvm._ffi.runtime_ctypes import DataType
+    if dtype:
+        data_type = DataType(dtype)
+    else:
+        data_type = None
+    if func_name is None:
+        func_name = False
+    elif isinstance(func_name, str):
+        func_name = tvm.tir.StringImm(func_name)
+    return _transform.PartitionGraphInUnorder(op_names, attrs, func_name, device_type, data_type)
+def DefuseOps():
+    """Defuse Relay function to multiply operators.
+
+    Returns
+    -------
+    ret : tvm.relay.Pass
+        The registered type DefuseOps pass.
+    """
+    return _transform.DefuseOps()  
 def InferType():
     """Infer the type of an expr.
 
@@ -133,6 +198,7 @@ def BackwardFoldScaleAxis():
     """
     return _transform.BackwardFoldScaleAxis()
 
+
 def RemoveUnusedFunctions(entry_functions=None):
     """Remove unused global relay functions in a relay module.
 
@@ -149,6 +215,7 @@ def RemoveUnusedFunctions(entry_functions=None):
     if entry_functions is None:
         entry_functions = ['main']
     return _transform.RemoveUnusedFunctions(entry_functions)
+
 
 def ForwardFoldScaleAxis():
     """Fold the scaling of axis into weights of conv2d/dense.
@@ -611,16 +678,20 @@ def un_cps(func):
 
 def _wrap_class_function_pass(pass_cls, pass_info):
     """Wrap a python class as function pass"""
+
     class PyFunctionPass(FunctionPass):
         """Internal wrapper class to create a class instance."""
+
         def __init__(self, *args, **kwargs):
             # initialize handle in cass pass_cls creation failed.fg
             self.handle = None
             inst = pass_cls(*args, **kwargs)
+
             # it is important not to capture self to
             # avoid a cyclic dependency
             def _pass_func(func, mod, ctx):
                 return inst.transform_function(func, mod, ctx)
+
             self.__init_handle_by_constructor__(
                 _transform.MakeFunctionPass, _pass_func, pass_info)
             self._inst = inst
@@ -719,7 +790,7 @@ def function_pass(pass_func=None, opt_level=None, name=None, required=None):
 
     required = required if required else []
     if not isinstance(required, (list, tuple)):
-        raise TypeError("Required is expected to be the type of " +
+        raise TypeError("Required is expected to be the type of " + 
                         "list/tuple.")
 
     def create_function_pass(pass_arg):
@@ -756,6 +827,7 @@ class ChangeBatch:
     pass: FunctionPass
       The pass.
     """
+
     def __init__(self, data, batch_size=16):
         self.data = data
         self.batch_size = batch_size
@@ -763,7 +835,9 @@ class ChangeBatch:
     def transform_function(self, func, mod, ctx):
         func = relay.Function(func.params, func.body, None, func.type_params, func.attrs)
         change_batch = self
+
         class ChangeBatchMutator(tvm.relay.ExprMutator):
+
             def visit_var(self, var):
                 if var in change_batch.data:
                     ty = var.type_annotation
@@ -771,4 +845,5 @@ class ChangeBatch:
                     new_shape[change_batch.data[var]] = change_batch.batch_size
                     return relay.Var(var.name_hint, relay.TensorType(new_shape, ty.dtype))
                 return var
+
         return ChangeBatchMutator().visit(func)

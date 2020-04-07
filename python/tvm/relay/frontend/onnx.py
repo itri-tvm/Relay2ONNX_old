@@ -318,7 +318,6 @@ class Conv(OnnxOpConverter):
     def _impl_v1(cls, inputs, attr, params):
         # Use shape of input to determine convolution type.
         input_shape = infer_shape(inputs[0])
-
         if 'auto_pad' in attr:
             attr['auto_pad'] = attr['auto_pad'].decode('utf-8')
             if attr['auto_pad'] in ('SAME_UPPER', 'SAME_LOWER'):
@@ -549,7 +548,21 @@ class Pad(OnnxOpConverter):
                 'value': 'pad_value',
             },
             )(inputs, attr, params)
-
+    @classmethod
+    def _impl_v11(cls, inputs, attr, params):
+        pad_width = []
+        data, pads, constant_value = inputs
+        pads = params[pads.name_hint].asnumpy().tolist()
+        pad_value = np.asscalar(params[constant_value.name_hint].asnumpy())
+        dims = int(len(pads) / 2)
+        for i in range(dims):
+            pad_width.append((pads[i], pads[i+dims]))        
+        return AttrCvt(
+            'pad',
+            extras={'pad_width': pad_width,
+                'pad_mode':'constant',
+                'pad_value': pad_value},
+            )([data], attr, params)
 
 class ParametricSoftPlus(OnnxOpConverter):
     """ Operator converter for ParametricSoftPlus.
@@ -1439,7 +1452,6 @@ class Resize(OnnxOpConverter):
         layout = "NCHW"  # ONNX assumes NCHW layout
         out_size = (size[2], size[3])
         return _op.image.resize(inputs[0], out_size, layout, method, coord_trans)
-
 
 # compatible operators that do NOT require any conversion.
 _identity_list = []

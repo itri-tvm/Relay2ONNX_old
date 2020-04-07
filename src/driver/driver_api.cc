@@ -243,7 +243,6 @@ Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
                            << "and host_target are both llvm target."
                            << "\n";
   }
-
   for (size_t i = 0; i < fhost.size(); ++i) {
     auto func = fhost[i];
     func = tir::BindDeviceType(func, target->device_type);

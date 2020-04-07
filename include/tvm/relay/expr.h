@@ -546,6 +546,8 @@ class TempExpr : public Expr {
 
 /*! \brief namespace of the attributes that are attached to a function. */
 namespace attr {
+/*! \brief A attribute to name the function */
+constexpr const char* kName = "Name";
 /*! \brief Mark the function as a primitive function. */
 constexpr const char* kPrimitive = "Primitive";
 /*!

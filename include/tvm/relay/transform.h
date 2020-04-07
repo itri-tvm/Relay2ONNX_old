@@ -59,6 +59,52 @@ TVM_DLL Pass CreateFunctionPass(const runtime::TypedPackedFunc<
                                 int opt_level,
                                 const std::string& name,
                                 const tvm::Array<tvm::PrimExpr>& required);
+/*
+	A simple annotator that creates the following program:
+           |
+      -- begin --
+           |
+         conv2d
+           |
+        bias_add
+           |
+         relu
+           |
+       -- end --
+           |
+ */
+
+/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs in order, annotate device type and computing data type.
+ *
+ * \param op_names The list of op names.
+ * \param attrs The corresponding attrs of op.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphInOrder(Array<PrimExpr> op_names, Array<Attrs> attrs, PrimExpr func_name, int device_type, DataType data_type);
+/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs, annotate device type and computing data type.
+ * \param op_names The list of op names.
+ * \param attrs The corresponding attrs of op.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphInUnorder(Array<PrimExpr> op_names, Array<Attrs> attrs, PrimExpr func_name, int device_type, DataType data_type);
+/*! \brief Partition the graph to subgraph depending on sub Relay expression, annotate device type and computing data type.
+ * \param subexpr Sub Relay expression.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphByExpr(Expr subexpr, PrimExpr func_name, int device_type, DataType data_type);
+/*! \brief Defuse Relay function to multiply operators.
+ * \return the pass.
+ */
+TVM_DLL Pass DeFuseOps();
 
 /*! \brief Remove expressions which does not effect the program result.
  *

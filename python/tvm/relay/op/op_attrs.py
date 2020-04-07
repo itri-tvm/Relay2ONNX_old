@@ -21,6 +21,10 @@ from ..base import register_relay_attr_node
 
 
 @register_relay_attr_node
+class ReduceAttrs(Attrs):
+    """Attributes for Reduce operators"""
+
+@register_relay_attr_node
 class Conv1DAttrs(Attrs):
     """Attributes for nn.conv1d"""
 
@@ -28,7 +32,6 @@ class Conv1DAttrs(Attrs):
 @register_relay_attr_node
 class Conv2DAttrs(Attrs):
     """Attributes for nn.conv2d"""
-
 
 @register_relay_attr_node
 class Conv2DWinogradAttrs(Attrs):
@@ -58,7 +61,6 @@ class BiasAddAttrs(Attrs):
 @register_relay_attr_node
 class DenseAttrs(Attrs):
     """Attributes for nn.dense"""
-
 
 @register_relay_attr_node
 class FIFOBufferAttrs(Attrs):
@@ -148,6 +150,9 @@ class DeviceCopyAttrs(Attrs):
 class CastAttrs(Attrs):
     """Attributes for transform.cast"""
 
+@register_relay_attr_node
+class ExpandDimsAttrs(Attrs):
+    """Attributes for transform.expand_dims"""
 
 @register_relay_attr_node
 class ConcatenateAttrs(Attrs):
@@ -318,6 +323,9 @@ class BinaryConv2DAttrs(Attrs):
 class BinaryDenseAttrs(Attrs):
     """Attributes used in bitserial dense operators"""
 
+@register_relay_attr_node
+class SoftmaxAttrs(Attrs):
+    """Attributes used in softmax operators"""
 
 @register_relay_attr_node
 class Conv2DTransposeAttrs(Attrs):

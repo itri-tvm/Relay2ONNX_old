@@ -29,7 +29,7 @@
 #include <tvm/relay/transform.h>
 #include <tvm/relay/qnn/transform.h>
 #include <memory>
-
+#include <fstream>
 #include "utils.h"
 
 namespace tvm {
@@ -328,7 +328,10 @@ class RelayBuildModule : public runtime::ModuleNode {
     relay_module = transform::FuseOps()(relay_module);
     relay_module = transform::InferType()(relay_module);
     CHECK(relay_module.defined());
-
+    std::ofstream myfile;
+    myfile.open ("optimize.txt");
+    myfile <<AsText(relay_module,true)<<"\n";
+    myfile.close();
     return relay_module;
   }
 

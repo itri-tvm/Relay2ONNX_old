@@ -68,7 +68,7 @@ class WellFormedChecker : private ExprVisitor, PatternVisitor {
     Var v = GetRef<Var>(op);
     if (current_bound.count(v) == 0) {
       if (total_bound.count(v) != 0) {
-        well_formed = false;
+    	well_formed = false;
       } else {
         free.insert(v);
       }
