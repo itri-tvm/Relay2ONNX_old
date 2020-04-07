@@ -43,7 +43,7 @@ Test ONNX Model List
 Relay to ONNX OP List
 ---------------------
 |Relay|ONNX|
----
+|-----|----|
 |abs|Abs|
 |add|Add|
 |argmax|ArgMax|
