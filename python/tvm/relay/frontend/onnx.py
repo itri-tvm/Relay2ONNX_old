@@ -1453,6 +1453,21 @@ class Resize(OnnxOpConverter):
         out_size = (size[2], size[3])
         return _op.image.resize(inputs[0], out_size, layout, method, coord_trans)
 
+class NonMaxSuppression(OnnxOpConverter):
+    """Operator converter for NonMaxSuppression
+    """
+    @classmethod
+    def _impl_v11(cls, inputs, attr, params):
+        in_len = len(inputs)
+        new_attr={}
+        # max_output_boxes_per_class
+        if in_len<3:
+            new_attr['max_output_size'] = infer_value_simulated(input[2], params)
+        # iou_threshold
+        if in_len<4:
+            new_attr['iou_threshold'] = infer_value_simulated(input[3], params)
+        
+            
 # compatible operators that do NOT require any conversion.
 _identity_list = []
 
@@ -1582,6 +1597,8 @@ def _get_convert_map(opset):
         'Where': Where.get_converter(opset),
         'Or': Or.get_converter(opset),
         'Resize': Resize.get_converter(opset),
+        'NonMaxSuppression': NonMaxSuppression.get_converter(opset),
+        #'Loop':Loop.get_converter(opset),
     }
 
 

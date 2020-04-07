@@ -89,8 +89,17 @@ class FunctionPass(Pass):
     """
 
 def PartitionGraphByExpr(subexpr, func_name = False, device_type = 0, dtype = None):
-    """Partition a Relay graph to subgraph with AST.
-
+    """Partition a Relay graph to subgraph with Relay expression.
+    Parameters
+    ----------
+    subexpr: tvm.relay.Expr
+        The sub graph.
+    func_name: string or boolean, optional
+        Specific the name of the function.
+    device_type: int, optional
+        Specific the device to run the subgraph.
+    dtype: string, optional
+        Specific the data type to cast.
     Returns
     -------
     ret: tvm.relay.Pass
@@ -108,7 +117,18 @@ def PartitionGraphByExpr(subexpr, func_name = False, device_type = 0, dtype = No
 
 def PartitionGraphInOrder(op_names, attrs = None, func_name = False, device_type = 0, dtype = None):
     """Partition a Relay graph to subgraph with ordered operators.
-
+    Parameters
+    ----------
+    op_names: list of string
+        The names of operators.
+    attrs: tvm.relay.Attrs, optional
+        Specific the attributes of the operators.
+    func_name: string or boolean, optional
+        Specific the name of the function.
+    device_type: int, optional
+        Specific the device to run the subgraph.
+    dtype: string, optional
+        Specific the data type to cast.
     Returns
     -------
     ret: tvm.relay.Pass
@@ -127,7 +147,18 @@ def PartitionGraphInOrder(op_names, attrs = None, func_name = False, device_type
 
 def PartitionGraphInUnorder(op_names, attrs = None, func_name = False, device_type = 0, dtype = None):
     """Partition a Relay graph to subgraph with unordered operators.
-
+    Parameters
+    ----------
+    op_names: list of string
+        The names of operators.
+    attrs: tvm.relay.Attrs, optional
+        Specific the attributes of the operators.
+    func_name: string or boolean, optional
+        Specific the name of the function.
+    device_type: int, optional
+        Specific the device to run the subgraph.
+    dtype: string, optional
+        Specific the data type to cast.
     Returns
     -------
     ret: tvm.relay.Pass
