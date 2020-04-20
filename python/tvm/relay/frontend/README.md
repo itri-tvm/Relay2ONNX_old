@@ -17,7 +17,7 @@
 
 Introduction
 ----------
-There are 66 operator conversion written in /python/tvm/relay/frontend/to_onnx.py file. For some special ONNX operators, Gemm, Conv and Unsqueeze, we create three new partition graph Relay pass (in /src/relay/pass folder) to fuse their converted Relay operators back to original ONNX operator.In some case, if nn.bias_add is not simplified by TVM optimization, these operators can be fused back to original ONNX operator. For the same reason, fuse expand_dims operators to unsqueeze operator.
+There are 70 operator conversion written in /python/tvm/relay/frontend/to_onnx.py file. For some special ONNX operators, Gemm, Conv and Unsqueeze, we create three new partition graph Relay pass (in /src/relay/pass folder) to fuse their converted Relay operators back to original ONNX operator.In some case, if nn.bias_add is not simplified by TVM optimization, these operators can be fused back to original ONNX operator. For the same reason, fuse expand_dims operators to unsqueeze operator.
 
 Test ONNX Model List
 --------------------
@@ -83,6 +83,7 @@ Relay to ONNX OP List
 |nn.convid|Conv|
 |nn.convid_tranpose|ConvTranspose|
 |nn.dense|FC|
+|nn.depth_to_space|DepthToSpace|
 |nn.dropout|Dropout|
 |nn.global_avg_poolid|GlobalAveragePool|
 |nn.global_max_poolid|GlobalMaxPool|
@@ -94,6 +95,8 @@ Relay to ONNX OP List
 |nn.pad|Pad|
 |nn.prelu|PRelu|
 |nn.relu|Relu|
+|nn.space_to_space|SpaceToDepth|
+|one_hot|OneHot|
 |power|Pow|
 |prod|ReduceProd|
 |reshape|Reshape|
@@ -103,6 +106,7 @@ Relay to ONNX OP List
 |split|Split|
 |sqrt|Sqrt|
 |squeeze|Squeeze|
+|strided_slice|Slice|
 |sub|Sub|
 |sum|ReduceSum|
 |take|Gather|
