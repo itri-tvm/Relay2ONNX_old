@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import te
 import numpy as np
 from tvm import relay
 from tvm.relay import transform
@@ -116,22 +117,12 @@ def get_funcs(data_shape,
               data_layout,
               kernel_layout,
               out_dtype,
-              groups=1):
+              groups=1,
+              channels=None):
     data = relay.var("data", shape=data_shape,
             dtype=data_dtype)
     kernel = relay.var("kernel", shape=kernel_shape,
             dtype=kernel_dtype)
-
-    if groups > 1:
-        channels = groups
-    elif kernel_layout == "OIHW":
-        channels = kernel_shape[0]
-    elif kernel_layout == "HWIO":
-        channels = kernel_shape[3]
-    elif kernel_layout == "HWOI":
-        channels = kernel_shape[2]
-    else:
-        raise NotImplementedError
 
     ref_func = get_ref_func(data,
                             kernel,
@@ -431,9 +422,9 @@ def test_layout():
                 kernel_shape, kernel_dtype)
 
         # NHWC and HWOI layout. Used in depthwise conv.
-        data_shape = (2, 2, 4, 1) # NHWC
+        data_shape = (2, 2, 4, 3) # NHWC
         data_dtype = 'uint8'
-        kernel_shape = (2, 2, 1, 1) # HWOI
+        kernel_shape = (2, 2, 3, 1) # HWOI
         kernel_dtype = 'uint8'
         ref_func, qnn_func = get_funcs(data_shape=data_shape,
                                        data_dtype=data_dtype,
@@ -447,6 +438,7 @@ def test_layout():
                                        padding=(0, 0),
                                        strides=(1, 1),
                                        dilation=(1, 1),
+                                       groups=3,
                                        data_layout="NHWC",
                                        kernel_layout="HWOI",
                                        out_dtype="int32")
@@ -503,6 +495,30 @@ def test_padding():
                                        out_dtype="int32")
         verify(ref_func, qnn_func, data_shape, data_dtype,
                 kernel_shape, kernel_dtype)
+
+        # Try asymmetric padding
+        data_shape = (2, 2, 4, 4) # NHWC
+        data_dtype = 'uint8'
+        kernel_shape = (2, 2, 4, 3) # HWIO
+        kernel_dtype = 'uint8'
+        ref_func, qnn_func = get_funcs(data_shape=data_shape,
+                                       data_dtype=data_dtype,
+                                       kernel_shape=kernel_shape,
+                                       kernel_dtype=kernel_dtype,
+                                       input_zero_point=8,
+                                       kernel_zero_point=3,
+                                       input_scale=1.0,
+                                       kernel_scale=1.0,
+                                       kernel_size=(2, 2),
+                                       padding=(1, 1, 2, 2),
+                                       strides=(1, 1),
+                                       dilation=(1, 1),
+                                       data_layout="NHWC",
+                                       kernel_layout="HWIO",
+                                       out_dtype="int32")
+        verify(ref_func, qnn_func, data_shape, data_dtype,
+                kernel_shape, kernel_dtype)
+
 
 def test_dilation():
     with TempOpAttr("qnn.conv2d", "FTVMQnnLegalize", legalize_qnn_conv2d):
@@ -826,7 +842,8 @@ def test_depthwise_depth_multiplier():
                                        data_layout="NCHW",
                                        kernel_layout="OIHW",
                                        out_dtype="int32",
-                                       groups=8)
+                                       groups=4,
+                                       channels=8)
         verify(ref_func, qnn_func, data_shape, data_dtype,
                 kernel_shape, kernel_dtype)
 
@@ -875,7 +892,8 @@ def test_depthwise_depth_multiplier():
                                        data_layout="NHWC",
                                        kernel_layout="HWOI",
                                        out_dtype="int32",
-                                       groups=8)
+                                       groups=4,
+                                       channels=8)
         verify(ref_func, qnn_func, data_shape, data_dtype,
                 kernel_shape, kernel_dtype)
 

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
-		<cconfiguration id="0.1658510237">
-			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="0.1658510237" moduleId="org.eclipse.cdt.core.settings" name="Default">
+		<cconfiguration id="0.1019107992">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="0.1019107992" moduleId="org.eclipse.cdt.core.settings" name="Default">
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
@@ -14,34 +14,34 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration buildProperties="" description="" id="0.1658510237" name="Default" optionalBuildProperties="" parent="org.eclipse.cdt.build.core.prefbase.cfg">
-					<folderInfo id="0.1658510237." name="/" resourcePath="">
-						<toolChain id="org.eclipse.cdt.build.core.prefbase.toolchain.1911213743" name="No ToolChain" resourceTypeBasedDiscovery="false" superClass="org.eclipse.cdt.build.core.prefbase.toolchain">
-							<targetPlatform id="org.eclipse.cdt.build.core.prefbase.toolchain.1911213743.1954054872" name=""/>
-							<builder arguments="-j8" command="make" id="org.eclipse.cdt.build.core.settings.default.builder.1422709005" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="org.eclipse.cdt.build.core.settings.default.builder"/>
-							<tool id="org.eclipse.cdt.build.core.settings.holder.libs.383191208" name="holder for library settings" superClass="org.eclipse.cdt.build.core.settings.holder.libs">
-								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="org.eclipse.cdt.build.core.settings.holder.libfiles.10477276" superClass="org.eclipse.cdt.build.core.settings.holder.libfiles" valueType="libFiles">
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/3rdparty/dlpack/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/3rdparty/dmlc-core/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/vta/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/topi/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/nnvm/include"/>
-									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200218/"/>
+				<configuration buildProperties="" description="" id="0.1019107992" name="Default" optionalBuildProperties="" parent="org.eclipse.cdt.build.core.prefbase.cfg">
+					<folderInfo id="0.1019107992." name="/" resourcePath="">
+						<toolChain id="org.eclipse.cdt.build.core.prefbase.toolchain.525590976" name="No ToolChain" resourceTypeBasedDiscovery="false" superClass="org.eclipse.cdt.build.core.prefbase.toolchain">
+							<targetPlatform id="org.eclipse.cdt.build.core.prefbase.toolchain.525590976.1309123540" name=""/>
+							<builder arguments="-j8" command="make" id="org.eclipse.cdt.build.core.settings.default.builder.1581260870" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="org.eclipse.cdt.build.core.settings.default.builder"/>
+							<tool id="org.eclipse.cdt.build.core.settings.holder.libs.128791355" name="holder for library settings" superClass="org.eclipse.cdt.build.core.settings.holder.libs">
+								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="org.eclipse.cdt.build.core.settings.holder.libfiles.1929663836" superClass="org.eclipse.cdt.build.core.settings.holder.libfiles" valueType="libFiles">
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/3rdparty/dlpack/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/3rdparty/dmlc-core/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/vta/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/topi/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/nnvm/include"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="../~/tvm/framework/20200412/"/>
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/usr/local/include"/>
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/usr/lib/gcc/x86_64-linux-gnu/5.4.0/include-fixed"/>
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/usr/include"/>
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/usr/include/x86_64-linux-gnu"/>
 								</option>
 							</tool>
-							<tool id="org.eclipse.cdt.build.core.settings.holder.864183355" name="Assembly" superClass="org.eclipse.cdt.build.core.settings.holder">
-								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.1406930342" languageId="org.eclipse.cdt.core.assembly" languageName="Assembly" sourceContentType="org.eclipse.cdt.core.asmSource" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
+							<tool id="org.eclipse.cdt.build.core.settings.holder.1020350720" name="Assembly" superClass="org.eclipse.cdt.build.core.settings.holder">
+								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.214526805" languageId="org.eclipse.cdt.core.assembly" languageName="Assembly" sourceContentType="org.eclipse.cdt.core.asmSource" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
 							</tool>
-							<tool id="org.eclipse.cdt.build.core.settings.holder.1275766847" name="GNU C++" superClass="org.eclipse.cdt.build.core.settings.holder">
-								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.2090928613" languageId="org.eclipse.cdt.core.g++" languageName="GNU C++" sourceContentType="org.eclipse.cdt.core.cxxSource,org.eclipse.cdt.core.cxxHeader" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
+							<tool id="org.eclipse.cdt.build.core.settings.holder.2085569542" name="GNU C++" superClass="org.eclipse.cdt.build.core.settings.holder">
+								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.1401541275" languageId="org.eclipse.cdt.core.g++" languageName="GNU C++" sourceContentType="org.eclipse.cdt.core.cxxSource,org.eclipse.cdt.core.cxxHeader" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
 							</tool>
-							<tool id="org.eclipse.cdt.build.core.settings.holder.1709832935" name="GNU C" superClass="org.eclipse.cdt.build.core.settings.holder">
-								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.1966768442" languageId="org.eclipse.cdt.core.gcc" languageName="GNU C" sourceContentType="org.eclipse.cdt.core.cSource,org.eclipse.cdt.core.cHeader" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
+							<tool id="org.eclipse.cdt.build.core.settings.holder.1378349634" name="GNU C" superClass="org.eclipse.cdt.build.core.settings.holder">
+								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.2015465889" languageId="org.eclipse.cdt.core.gcc" languageName="GNU C" sourceContentType="org.eclipse.cdt.core.cSource,org.eclipse.cdt.core.cHeader" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
 							</tool>
 						</toolChain>
 					</folderInfo>
@@ -51,21 +51,19 @@
 		</cconfiguration>
 	</storageModule>
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-		<project id="20200218.null.807645431" name="20200218"/>
+		<project id="20200412.null.396299665" name="20200412"/>
 	</storageModule>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="0.1658510237">
-			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="0.84261477">
+		<scannerConfigBuildInfo instanceId="0.1019107992">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
 		<configuration configurationName="Default">
-			<resource resourceType="PROJECT" workspacePath="/20200218"/>
+			<resource resourceType="PROJECT" workspacePath="/20200412"/>
 		</configuration>
 	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 </cproject>

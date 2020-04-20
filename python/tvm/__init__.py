@@ -24,13 +24,13 @@ import traceback
 # tvm._ffi
 from ._ffi.base import TVMError, __version__
 from ._ffi.runtime_ctypes import TypeCode, DataType
-from ._ffi.registry import register_object, register_func, register_extension
+from ._ffi import register_object, register_func, register_extension, get_global_func
 
 # top-level alias
 # tvm.runtime
 from .runtime.object import Object
 from .runtime.ndarray import context, cpu, gpu, opencl, cl, vulkan, metal, mtl
-from .runtime.ndarray import vpi, rocm, opengl, ext_dev, micro_dev
+from .runtime.ndarray import vpi, rocm, opengl, ext_dev, micro_dev, hexagon
 from .runtime import ndarray as nd
 
 # tvm.error
@@ -47,10 +47,9 @@ from . import tir
 
 # tvm.target
 from . import target
-from .target import build_config
 
 # tvm.te
-from .te import decl_tensor_intrin, create_schedule, tag_scope
+from . import te
 
 # tvm.testing
 from . import testing
@@ -58,19 +57,8 @@ from . import testing
 # tvm.driver
 from .driver import build, lower
 
-# tvm.hybrid
-from . import hybrid
-
 # others
 from . import arith
-
-# backward compact for topi, to be removed later
-from .api import *
-from .tir import expr, stmt, ir_builder, ir_pass, generic
-from .te import tensor, schedule
-from .tir.op import *
-from . import intrin
-from . import make
 
 # Contrib initializers
 from .contrib import rocm as _rocm, nvcc as _nvcc, sdaccel as _sdaccel

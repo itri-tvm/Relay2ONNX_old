@@ -24,9 +24,11 @@
 #ifndef TVM_RELAY_TRANSFORM_H_
 #define TVM_RELAY_TRANSFORM_H_
 
+#include <tvm/runtime/container.h>
 #include <tvm/relay/attrs/transform.h>
 #include <tvm/ir/transform.h>
 #include <tvm/relay/expr.h>
+#include <tvm/relay/function.h>
 #include <tvm/relay/op_attr_types.h>
 #include <tvm/relay/op.h>
 
@@ -58,53 +60,7 @@ TVM_DLL Pass CreateFunctionPass(const runtime::TypedPackedFunc<
                                 Function(Function, IRModule, PassContext)>& pass_func,
                                 int opt_level,
                                 const std::string& name,
-                                const tvm::Array<tvm::PrimExpr>& required);
-/*
-	A simple annotator that creates the following program:
-           |
-      -- begin --
-           |
-         conv2d
-           |
-        bias_add
-           |
-         relu
-           |
-       -- end --
-           |
- */
-
-/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs in order, annotate device type and computing data type.
- *
- * \param op_names The list of op names.
- * \param attrs The corresponding attrs of op.
- * \param func_name The specified function name.
- * \param device_type The specified device type.
- * \param data_type The specified data type.
- * \return the pass.
- */
-TVM_DLL Pass PartitionGraphInOrder(Array<PrimExpr> op_names, Array<Attrs> attrs, PrimExpr func_name, int device_type, DataType data_type);
-/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs, annotate device type and computing data type.
- * \param op_names The list of op names.
- * \param attrs The corresponding attrs of op.
- * \param func_name The specified function name.
- * \param device_type The specified device type.
- * \param data_type The specified data type.
- * \return the pass.
- */
-TVM_DLL Pass PartitionGraphInUnorder(Array<PrimExpr> op_names, Array<Attrs> attrs, PrimExpr func_name, int device_type, DataType data_type);
-/*! \brief Partition the graph to subgraph depending on sub Relay expression, annotate device type and computing data type.
- * \param subexpr Sub Relay expression.
- * \param func_name The specified function name.
- * \param device_type The specified device type.
- * \param data_type The specified data type.
- * \return the pass.
- */
-TVM_DLL Pass PartitionGraphByExpr(Expr subexpr, PrimExpr func_name, int device_type, DataType data_type);
-/*! \brief Defuse Relay function to multiply operators.
- * \return the pass.
- */
-TVM_DLL Pass DeFuseOps();
+                                const tvm::Array<runtime::String>& required);
 
 /*! \brief Remove expressions which does not effect the program result.
  *
@@ -121,6 +77,20 @@ TVM_DLL Pass DeFuseOps();
  * \return the pass.
  */
 TVM_DLL Pass DeadCodeElimination(bool inline_once = false);
+
+/*!
+* \brief Convert all expressions of TensorType into GradCell,
+* an algebraic data type defined in gradient.rly.
+*
+* This will delay or decrease memory usage. All calls to
+* ones, ones_like, zeros, zeros_like will not immediately instantiate a tensor in memory,
+* rather only instantiate if needed. It also defines + and * operation
+* between GradCell types which can increase performance when using
+* zero-filled or one-filled tensors, which is the case in reverse mode ad.
+*
+* \return the pass
+*/
+TVM_DLL Pass LazyGradientInit();
 
 /*!
  * \brief Fold constant expressions.
@@ -208,6 +178,13 @@ TVM_DLL Pass PartialEval();
  * \return The Pass.
  */
 TVM_DLL Pass SimplifyInference();
+
+/*!
+ * \brief Replaces non linear activation functions with their fast but approximate counterparts.
+ *
+ * \return The Pass.
+ */
+TVM_DLL Pass FastMath();
 
 /*!
  * \brief Infer the type of an expression.
@@ -363,6 +340,71 @@ TVM_DLL Pass PrintIR(bool show_meta_data = true);
  */
 TVM_DLL Pass PartitionGraph();
 
+/*!
+ * \brief Inline the global functions marked as `inline` in a given Relay
+ * IRModule.
+ *
+ * \return The pass.
+ */
+TVM_DLL Pass Inline();
+
+/*!
+ * \brief Remove the unused functions in the Relay IRModule.
+ *
+ * \param entry_functions The entry functions used to search the functions that
+ *        are being used.
+ *
+ * \return The pass.
+ */
+TVM_DLL Pass RemoveUnusedFunctions(Array<runtime::String> entry_functions);
+
+/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs in order, annotate device type and computing data type.
+ *
+ * \param op_attrs The list of specified ops.
+ * \param include The list of excluding ops.
+ * \param exclude The list of excluding ops.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphInOrder(Array<Array<ObjectRef>> op_attrs, Array<Array<ObjectRef>> include, Array<Array<ObjectRef>> exclude, String func_name, int device_type, DataType data_type);
+/*! \brief Partition the graph to subgraph depending on the list of op names and its attrs, annotate device type and computing data type.
+ * \param op_attrs The list of specified ops.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphInUnorder(Array<Array<ObjectRef>> op_attrs, String func_name, int device_type, DataType data_type);
+/*! \brief Partition the graph to subgraph depending on sub Relay expression, annotate device type and computing data type.
+ * \param subexpr Sub Relay expression.
+ * \param func_name The specified function name.
+ * \param device_type The specified device type.
+ * \param data_type The specified data type.
+ * \return the pass.
+ */
+TVM_DLL Pass PartitionGraphByExpr(Expr subexpr, String func_name, int device_type, DataType data_type);
+
+
+/*! \brief Defuse Relay function to multiply operators.
+ * \return the pass.
+ */
+TVM_DLL Pass DeFuseOps();
+
+/*! \brief Fuse multiple functions to one function.
+ * \return the pass.
+ */
+TVM_DLL Pass FuseFuncs(int limit_num);
+
+/*!
+ * \brief Fuse operations into expr into seperate functions.
+ *
+ * \param fuse_opt_level Optimization level. If it is -1 it will be inferred from pass context.
+ *
+ * \return The pass.
+ */
+TVM_DLL Pass FuseSpecifiedOps(Array<Array<ObjectRef>> op_attrs, int device_type, int fuse_opt_level = -1);
 }  // namespace transform
 
 /*!
@@ -436,6 +478,7 @@ TVM_DLL Expr ForwardRewrite(const Expr& expr,
  */
 TVM_DLL Expr RewriteAnnotatedOps(const Expr& expr, int fallback_device);
 
+
 /*!
  * \brief Turn an expression into continuation passing style(CPS).
  *
@@ -478,5 +521,6 @@ TVM_DLL Expr DeDup(const Expr& e);
 
 }  // namespace relay
 }  // namespace tvm
+
 
 #endif  // TVM_RELAY_TRANSFORM_H_

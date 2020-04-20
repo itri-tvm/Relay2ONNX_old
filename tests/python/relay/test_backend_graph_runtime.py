@@ -19,7 +19,6 @@ import numpy as np
 import tvm
 from tvm import relay
 from tvm.contrib import graph_runtime
-from tvm.relay.scope_builder import ScopeBuilder
 from tvm.relay.op import add
 from tvm.relay.testing.config import ctx_list
 

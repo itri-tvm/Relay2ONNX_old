@@ -25,7 +25,8 @@
 #include <tvm/relay/analysis.h>
 #include <tvm/relay/op_attr_types.h>
 #include <tvm/relay/qnn/attrs.h>
-#include "../../pass/pattern_util.h"
+#include "../../transforms/pattern_util.h"
+#include "../../transforms/infer_layout_util.h"
 #include "../util.h"
 
 namespace tvm {
@@ -33,6 +34,79 @@ namespace relay {
 namespace qnn {
 
 TVM_REGISTER_NODE_TYPE(RequantizeAttrs);
+
+Array<Array<Layout>> RequantizeInferCorrectLayout(const Attrs& attrs,
+                                                  const Array<Layout>& new_in_layouts,
+                                                  const Array<Layout>& old_in_layouts,
+                                                  const Array<tvm::relay::Type>& old_in_types) {
+  RequantizeAttrs* param = const_cast<RequantizeAttrs*>(attrs.as<RequantizeAttrs>());
+
+  Array<Array<IndexExpr>> old_in_shapes;
+  for (auto old_in_t : old_in_types) {
+    CHECK(old_in_t.as<TensorTypeNode>());
+    old_in_shapes.push_back(old_in_t.as<TensorTypeNode>()->shape);
+  }
+
+  Array<Layout> input_layouts, output_layouts;
+  if (new_in_layouts.defined()) {
+    // Adapt to new layout. The axis has to change.
+    // Record original reduce axis. Convert to the modified layout axis.
+    CHECK_EQ(new_in_layouts.size(), 5);
+    CHECK_EQ(old_in_layouts.size(), 5);
+
+    // 1) Get the axis.
+    int axis = param->axis;
+    axis = (axis == -1) ? old_in_shapes[0].size() - 1 : axis;
+
+    // 2) Collect the original axis
+    std::string old_dim = old_in_layouts[0][axis].name();
+
+    // 3) Collect the new axes by walking new_layout.
+    tvm::Integer new_axis;
+    std::string new_layout_string = "";
+    int axis_index = 0;
+    for (auto iter_var : new_in_layouts[0]->axes) {
+      const auto& layout_axis = LayoutAxis::Get(iter_var);
+      const std::string& layout_dim = layout_axis.name();
+      if (old_dim  == layout_dim) {
+        new_axis = tvm::Integer(axis_index);
+      }
+      // Collect only the primal axis.
+      if (layout_axis.IsPrimal()) {
+        new_layout_string += layout_dim;
+        axis_index++;
+      }
+    }
+
+    // 4) Set the new axis and layout.
+    Layout new_layout = Layout(new_layout_string);
+
+    // Fill the layouts of remaining input tensors - scales and zero points. The layouts of these
+    // tensors can be treated as channel layout.
+    Layout channel_layout = Layout("C");
+    input_layouts = {new_layout, channel_layout, channel_layout, channel_layout, channel_layout};
+    output_layouts = {new_layout};
+    param->axis = new_axis;
+  } else if (old_in_layouts.defined()) {
+    // If the new layout is undefined, set the old layout as the inferred layout.
+    CHECK_EQ(old_in_layouts.size(), 5);
+
+    Layout old_layout = old_in_layouts[0];
+
+    // Fill the layouts of remaining input tensors - scales and zero points. The layouts of these
+    // tensors can be treated as channel layout.
+    Layout channel_layout = Layout("C");
+    input_layouts = {old_layout, channel_layout, channel_layout, channel_layout, channel_layout};
+    output_layouts = {old_layout};
+  } else {
+    // Set the layouts to undef.
+    Layout undef = Layout::Undef();
+    input_layouts = Array<Layout>(5, undef);
+    output_layouts = {undef};
+  }
+
+  return Array<Array<Layout>>{input_layouts, output_layouts};
+}
 
 // Lowering of qnn.requantize op
 
@@ -58,36 +132,28 @@ Expr RequantizeLower(const Expr& input_tensor, const Expr& input_scale,
                      const Expr& input_zero_point, const Expr& output_scale,
                      const Expr& output_zero_point, const RequantizeAttrs* param,
                      const Array<IndexExpr>& input_shape, const DataType& out_dtype) {
-  DataType hp_dtype = DataType::Int(64);
-
-  auto tensor = Cast(input_tensor, hp_dtype);
+  auto tensor = Cast(input_tensor, DataType::Int(32));
   // 1) Subtract the input_zero_point
   auto zero_scalar = MakeConstantScalar(DataType::Int(32), 0);
   if (!IsEqualScalar(input_zero_point, zero_scalar)) {
-    tensor = Subtract(tensor, Cast(input_zero_point, hp_dtype));
+    tensor = Subtract(tensor, Cast(input_zero_point, DataType::Int(32)));
   }
-
-  // Check if multiplier is greater than 1.
-  bool is_multiplier_gt_one = false;
 
   // 2) If the input and output scales are same, we can skip the fixed point multiplication. Check
   // if the input scale is per-tensor or per-channel. If it is per-tensor, there is single scale for
   // the whole tensor. For per-channel (aka per-axis), there is a vector of scales for the input
   // tensor. Depending on the quantization type, the fixed point multiplication routing is called.
-  auto scaled_int64_t = tensor;
+  auto scaled_int32_t = tensor;
   float output_scale_float = GetScalarFromConstant<float>(output_scale);
   if (IsConstScalar(input_scale)) {
     // This is per-tensor quantization. Single scale.
     float input_scale_float = GetScalarFromConstant<float>(input_scale);
     double double_multiplier =
         static_cast<double>(input_scale_float) / static_cast<double>(output_scale_float);
-    if (double_multiplier > 1) {
-      is_multiplier_gt_one = true;
-    }
     // Skip if input and output scales are same.
     if (!IsEqualScalar(input_scale, output_scale)) {
-      scaled_int64_t =
-          FixedPointMultiply(scaled_int64_t, double_multiplier, input_shape, param->rounding);
+      scaled_int32_t =
+          FixedPointMultiply(scaled_int32_t, double_multiplier, input_shape, param->rounding);
     }
   } else {
     // This is per-channel (per=axis) quantization.
@@ -97,30 +163,28 @@ Expr RequantizeLower(const Expr& input_tensor, const Expr& input_scale,
       double multiplier =
           static_cast<double>(input_axis_scale) / static_cast<double>(output_scale_float);
       double_multipliers.push_back(multiplier);
-      if (multiplier > 1) {
-        is_multiplier_gt_one = true;
-      }
     }
     int axis = param->axis;
     axis = (axis == -1) ? input_shape.size() - 1 : axis;
-    scaled_int64_t = FixedPointMultiplyPerChannel(scaled_int64_t, double_multipliers, input_shape,
+    scaled_int32_t = FixedPointMultiplyPerChannel(scaled_int32_t, double_multipliers, input_shape,
                                                   axis, param->rounding);
   }
 
   // 3) Add the output zero point.
-  auto shifted_int64_t = scaled_int64_t;
+  auto shifted_int32_t = scaled_int32_t;
   if (!IsEqualScalar(output_zero_point, zero_scalar)) {
-    shifted_int64_t = Add(Cast(output_zero_point, hp_dtype), scaled_int64_t);
+    shifted_int32_t = Add(Cast(output_zero_point, DataType::Int(32)), scaled_int32_t);
   }
 
   // 4) Clip to the out_dtype min/max. Skip clipping if out_dtype is Int32. The fixed point
-  // multiplication keeps the value in int32 range if the requantize scale is less than 1.
-  if (out_dtype == DataType::Int(32) && !is_multiplier_gt_one) {
-    return Cast(shifted_int64_t, out_dtype);
+  // multiplication keeps the value in int32 range.
+  if (out_dtype == DataType::Int(32)) {
+    return shifted_int32_t;
   }
+
   auto q_min = GetQmin(out_dtype);
   auto q_max = GetQmax(out_dtype);
-  auto clipped_t = Clip(shifted_int64_t, q_min, q_max);
+  auto clipped_t = Clip(shifted_int32_t, q_min, q_max);
   return Cast(clipped_t, out_dtype);
 }
 
@@ -225,7 +289,7 @@ Expr MakeRequantize(Expr data, Expr input_scale, Expr input_zero_point, Expr out
   attrs->rounding = std::move(rounding);
   attrs->out_dtype = std::move(out_dtype);
   static const Op& op = Op::Get("qnn.requantize");
-  return CallNode::make(op, {data, input_scale, input_zero_point, output_scale, output_zero_point},
+  return Call(op, {data, input_scale, input_zero_point, output_scale, output_zero_point},
                         Attrs(attrs), {});
 }
 
@@ -247,7 +311,8 @@ Q_output = zp_output +  (scale_input)/(scale_output) * (Q_input - zp_input)
 .add_argument("output_zero_point", "Tensor", "The quantization zero_point of the output tensor.")
 .set_support_level(11)
 .add_type_rel("Requantize", RequantizeRel)
-.set_attr<FTVMLegalize>("FTVMQnnCanonicalize", RequantizeQnnCanonicalize);
+.set_attr<FTVMLegalize>("FTVMQnnCanonicalize", RequantizeQnnCanonicalize)
+.set_attr<FInferCorrectLayout>("FInferCorrectLayout", RequantizeInferCorrectLayout);
 
 TVM_REGISTER_GLOBAL("relay.qnn.op._make.requantize")
 .set_body_typed(MakeRequantize);
