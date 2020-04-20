@@ -76,7 +76,8 @@ class BufferVar(ObjectGeneric):
     def __getitem__(self, index):
         t = DataType(self._content_type)
         if t.lanes > 1:
-            index = _expr.Ramp(index * t.lanes, 1, t.lanes)
+            base = index * t.lanes
+            index = _expr.Ramp(base, const(1, base.dtype), t.lanes)
         return _expr.Load(self._content_type, self._buffer_var, index)
 
     def __setitem__(self, index, value):
@@ -87,7 +88,8 @@ class BufferVar(ObjectGeneric):
                     value.dtype, self._content_type))
         t = DataType(self._content_type)
         if t.lanes > 1:
-            index = _expr.Ramp(index * t.lanes, 1, t.lanes)
+            base = index * t.lanes
+            index = _expr.Ramp(base, const(1, base.dtype), t.lanes)
         self._builder.emit(_stmt.Store(self._buffer_var, value, index))
 
 
@@ -98,8 +100,8 @@ class IRBuilder(object):
     --------
     .. code-block:: python
 
-        ib = tvm.ir_builder.create()
-        n = tvm.var("n")
+        ib = tvm.tir.ir_builder.create()
+        n = te.var("n")
         A = ib.allocate("float32", n, name="A")
         with ib.for_range(0, n, name="i") as i:
             with ib.if_scope((i % 2) == 0):
@@ -158,8 +160,8 @@ class IRBuilder(object):
         --------
         .. code-block:: python
 
-            ib = tvm.ir_builder.create()
-            i = tvm.var("i")
+            ib = tvm.tir.ir_builder.create()
+            i = te.var("i")
             x = ib.pointer("float32")
             ib.scope_attr(x, "storage_scope", "global")
             x[i] = x[i - 1] + 1
@@ -200,7 +202,7 @@ class IRBuilder(object):
         --------
         .. code-block:: python
 
-            ib = tvm.ir_builder.create()
+            ib = tvm.tir.ir_builder.create()
             x = ib.pointer("float32")
             with ib.for_range(1, 10, name="i") as i:
                 x[i] = x[i - 1] + 1
@@ -243,8 +245,8 @@ class IRBuilder(object):
         --------
         .. code-block:: python
 
-            ib = tvm.ir_builder.create()
-            i = tvm.var("i")
+            ib = tvm.tir.ir_builder.create()
+            i = te.var("i")
             x = ib.pointer("float32")
             with ib.if_scope((i % 2) == 0):
                 x[i] = x[i - 1] + 1
@@ -268,8 +270,8 @@ class IRBuilder(object):
         --------
         .. code-block:: python
 
-            ib = tvm.ir_builder.create()
-            i = tvm.var("i")
+            ib = tvm.tir.ir_builder.create()
+            i = te.var("i")
             x = ib.pointer("float32")
             with ib.if_scope((i % 2) == 0):
                 x[i] = x[i - 1] + 1

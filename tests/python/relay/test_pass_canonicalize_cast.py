@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import te
 import tvm.relay as relay
 import tvm.relay.transform as _transform
 
@@ -63,7 +64,7 @@ def test_canonicalize_cast():
         mod[gv] = y_expected
         mod = _transform.InferType()(mod)
         y_expected = mod["expected"]
-        assert relay.analysis.alpha_equal(y, y_expected)
+        assert tvm.ir.structural_equal(y, y_expected)
 
     check((1, 16, 7, 7))
 

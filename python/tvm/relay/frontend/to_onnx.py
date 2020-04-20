@@ -19,21 +19,22 @@
 import logging
 import numpy as np
 import tvm
-from tvm.relay.ty import TensorType, TupleType
-from tvm.relay.expr import Function, Var, Call, Constant, TupleGetItem, Tuple
-from tvm.relay.op import Op
 from tvm.ir import IRModule
 
 from ... import nd as _nd
 from .. import analysis
 from .. import expr as _expr
 from .. import op as _op
+from ..ty import TensorType, TupleType
+from ..function import Function
+from ..expr import Var, Call, Constant, TupleGetItem, Tuple
+from ..op import Op
 from ..expr_functor import ExprVisitor
 from onnx import numpy_helper, helper, NodeProto
 from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
 import onnx
-from tvm.relay.transform import PartitionGraphInOrder, PartitionGraphInUnorder, PartitionGraphByExpr
-from .common import infer_type
+from ..transform import Sequential, PartitionGraphInOrder, PartitionGraphInUnorder, PartitionGraphByExpr
+from .common import new_var, infer_type
 from torch._jit_internal import ignore
 __all__ = ['to_onnx']
 
@@ -47,8 +48,8 @@ class AttrCvt(object):
     Parameters
     ----------
     op_name : str or callable
-        If set as str, returned operator name is the str.
-        If set as callable, returned operator is the str returned by calling:
+        If set as str, returned op name is the str.
+        If set as callable, returned op is the str returned by calling:
         `op_name = func(attr)`
 
     transforms : dict of `new_name, or (new_name, default_value, transform function)`
@@ -112,19 +113,19 @@ class AttrCvt(object):
         new_attrs = {}
         for k in attrs.keys():
             if k in self._excludes:
-                raise NotImplementedError('Attribute %s in operator %s is not' +
+                raise NotImplementedError('Attribute %s in op %s is not' +
                                           ' supported.', k, op_name)
             if k in self._disables:
-                logging.warning("Attribute %s is disabled in operator %s", k, op_name)
+                logging.warning("Attribute %s is disabled in op %s", k, op_name)
             elif k in self._ignores:
                 if k != 'tvm_custom':
-                    logging.warning("Attribute %s is ignoresd in operator %s", k, op_name)
+                    logging.warning("Attribute %s is ignoresd in op %s", k, op_name)
             elif k in self._transforms:
                 new_name, defaults, transform = self._parse_default(self._transforms[k])
                 if defaults is None:
                     new_attr = self._required_attr(attrs, k)
                 else:
-                    new_attr = attrs.get(k, None)
+                    new_attr = attrs.setdefault(k, None)
                 if new_attr is None:
                     new_attrs[new_name] = defaults
                 else:
@@ -220,20 +221,24 @@ def tvm_array_to_list(object):
     else:
         return object
 class Constant(ToOnnxOpConverter):
+    name = 'Constant'
     @classmethod
     def _impl_v1(cls, name, data):
-        if type(data) in [list,tuple]:
+        if type(data) in (list,tuple):
             dtype = type(data[0]).__name__
             array = np.array(data, dtype=dtype)
+        elif type(data) in (int, float):
+            dtype = type(data).__name__
+            array = np.array([data], dtype=dtype)
         elif type(data) is np.ndarray:
             dtype = data.dtype
             array = data
         else:
             dtype = type(data).__name__
             array = np.array(data, dtype=dtype)
-        assert dtype not in (np.float16, np.float, np.double), 'Constant with dtype \"{}\" is not supported in opset=1.'.format(dtype)
+        assert dtype not in (np.float16, np.float, np.double), 'Constant with dtype "{}" is not supported in opset=1.'.format(dtype)
         const_node = onnx.helper.make_node(
-            'Constant',
+            cls.name,
             inputs=[],
             outputs=[name],
             value = onnx.helper.make_tensor(
@@ -246,9 +251,12 @@ class Constant(ToOnnxOpConverter):
         return const_node
     @classmethod
     def _impl_v9(cls, name, data):
-        if type(data) in [list,tuple]:
+        if type(data) in (list,tuple):
             dtype = type(data[0]).__name__
             array = np.array(data, dtype=dtype)
+        elif type(data) in (int, float):
+            dtype = type(data).__name__
+            array = np.array([data], dtype=dtype)
         elif type(data) is np.ndarray:
             dtype = data.dtype
             array = data
@@ -256,7 +264,7 @@ class Constant(ToOnnxOpConverter):
             dtype = type(data).__name__
             array = np.array(data, dtype=dtype)
         const_node = onnx.helper.make_node(
-            'Constant',
+            cls.name,
             inputs=[],
             outputs=[name],
             value = onnx.helper.make_tensor(
@@ -269,9 +277,12 @@ class Constant(ToOnnxOpConverter):
         return const_node
     @classmethod
     def _impl_v11(cls, name, data):
-        if type(data) in [list,tuple]:
+        if type(data) in (list,tuple):
             dtype = type(data[0]).__name__
             array = np.array(data, dtype=dtype)
+        elif type(data) in (int, float):
+            dtype = type(data).__name__
+            array = np.array([data], dtype=dtype)
         elif type(data) is np.ndarray:
             dtype = data.dtype
             array = data
@@ -280,7 +291,7 @@ class Constant(ToOnnxOpConverter):
             array = np.array(data, dtype=dtype)
         shape = [1] if array.size==1 else array.shape
         const_node = onnx.helper.make_node(
-            'Constant',
+            cls.name,
             inputs=[],
             outputs=[name],
             value = onnx.helper.make_tensor(
@@ -300,55 +311,90 @@ class Constant(ToOnnxOpConverter):
             dtype = type(data).__name__
             value = {'value_{}'.format(dtype): data}
         const_node = onnx.helper.make_node(
-            'Constant',
+            cls.name,
             inputs=[],
             outputs=[name],
             **value
         )
         return const_node
-class NNBatchNorm(ToOnnxOpConverter):
-    """ Operator converter for BatchNorm.
-    """
+class BatchNorm(ToOnnxOpConverter):
+    """ Operator converter for nn.batch_norm op."""
+    name = 'BatchNormalization'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        consumed_inputs = [0]*5
+        if attrs['scale'] == False:
+            consumed_inputs[1]=1
+        if attrs['center'] == False:
+            consumed_inputs[2]=1
+        return AttrCvt(cls.name,
+                       extras={'is_test':1, 'consumed_inputs': consumed_inputs},
+                       ignores=['axis', 'center', 'scale'])(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v7(cls, inputs, outputs, **attrs):
+        assert attrs.setdefault('scale', 1) == True and attrs.setdefault('center', 1) == True, 'Scale(gamma) and bias(beta) in opset 12 of BatchNorm must be reserved.'
+        ignores=['axis', 'center', 'scale']
+        return AttrCvt(cls.name, ignores=ignores)(inputs, outputs, **attrs)
+
     @classmethod
     def _impl_v12(cls, inputs, outputs, **attrs):
-        op_type='BatchNormalization'
-        #extras={'momentum':1}
-        transforms={
-            'epsilon':'epsilon'
-        }
+        assert attrs.setdefault('scale', 1) == True and attrs.setdefault('center', 1) == True, 'Scale(gamma) and bias(beta) in opset 12 of BatchNorm must be reserved.'
         ignores=['axis', 'center', 'scale']
-        return AttrCvt(op_name = op_type, transforms=transforms, ignores=ignores)(inputs, outputs, **attrs)
+        return AttrCvt(cls.name, ignores=ignores)(inputs, outputs, **attrs)
 
 
-class NNBatchFlatten(ToOnnxOpConverter):
-    """ Operator converter for Flatten.
-    """
+class BatchFlatten(ToOnnxOpConverter):
+    """ Operator converter for nn.batch_flatten op."""
+    name = 'Flatten'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        return AttrCvt(cls.name, extras={'axis': 1})(inputs, outputs, **attrs)
     @classmethod
     def _impl_v11(cls, inputs, outputs, **attrs):
-        op_type= 'Flatten'        
-        extras={'axis': 1}
-        return AttrCvt(op_name = op_type, extras=extras)(inputs, outputs, **attrs)
+        return AttrCvt(cls.name, extras={'axis': 1})(inputs, outputs, **attrs)
     
-class NNMaxPool(ToOnnxOpConverter):
-    """ Operator converter for MaxPool
-    """
+class MaxPool(ToOnnxOpConverter):
+    """ Operator converter for nn.max_poolid op."""
+    name = 'MaxPool'
     @classmethod
-    def _impl_v12(cls, inputs, outputs, **attrs):
-        op_type = 'MaxPool'
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        assert attrs.setdefault('ceil_mode', 0) == False, 'Value of attr "ceil_mode" must be False.'
+        transforms ={
+            'dilation':'dilations',
+            'pool_size': 'kernel_shape',
+            'padding':'pads'
+        }
+        ignores=['layout','ceil_mode']
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v11(cls, inputs, outputs, **attrs):
         transforms ={
             'dilation':'dilations',
             'pool_size': 'kernel_shape',
             'padding':'pads'
         }
         ignores=['layout']
-        return AttrCvt(op_name = op_type, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
-
-class NNConviDTranspose(ToOnnxOpConverter):
-    """ Operator converter for nn.convid_transpose.
-    """
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
     @classmethod
-    def _impl_v11(cls, inputs, outputs, **attrs):
-        op_type = 'ConvTranspose'
+    def _impl_v12(cls, inputs, outputs, **attrs):
+        transforms ={
+            'dilation':'dilations',
+            'pool_size': 'kernel_shape',
+            'padding':'pads'
+        }
+        ignores=['layout']
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
+class MaxPool1D(MaxPool):
+    """ Operator converter for nn.max_pool1d op."""
+class MaxPool2D(MaxPool):
+    """ Operator converter for nn.max_pool2d op."""
+class MaxPool3D(MaxPool):
+    """ Operator converter for nn.max_pool3d op."""
+class ConvTranspose(ToOnnxOpConverter):
+    """ Operator converter for nn.convid_transpose op."""
+    name = 'ConvTranspose'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
         transforms ={
             'dilation':'dilations',
             'groups':'group',
@@ -357,13 +403,27 @@ class NNConviDTranspose(ToOnnxOpConverter):
         }
         ignores=['channels', 'data_layout','kernel_layout','out_layout','out_dtype']
         extras={'output_shape': c.checked_type.concrete_shape()}
-        return AttrCvt(op_name = op_type, transforms = transforms ,ignores = ignores, extras=extras)(inputs, outputs, **attrs)
-class NNConviD(ToOnnxOpConverter):
-    """ Operator converter for nn.convid.
-    """
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores, extras=extras)(inputs, outputs, **attrs)
     @classmethod
     def _impl_v11(cls, inputs, outputs, **attrs):
-        op_type = 'Conv'
+        transforms ={
+            'dilation':'dilations',
+            'groups':'group',
+            'kernel_size': 'kernel_shape',
+            'padding':'pads'
+        }
+        ignores=['channels', 'data_layout','kernel_layout','out_layout','out_dtype']
+        extras={'output_shape': c.checked_type.concrete_shape()}
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores, extras=extras)(inputs, outputs, **attrs)
+class Conv1DTranspose(ConvTranspose):
+    """ Operator converter for nn.conv1d_transpose op."""
+class Conv2DTranspose(ConvTranspose):
+    """ Operator converter for nn.conv2d_transpose op."""
+class Conv(ToOnnxOpConverter):
+    """ Operator converter for nn.convid op."""
+    name = 'Conv'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
         transforms ={
             'dilation':'dilations',
             'groups':'group',
@@ -371,10 +431,34 @@ class NNConviD(ToOnnxOpConverter):
             'padding':'pads'
         }
         ignores=['channels','data_layout','kernel_layout','out_layout','out_dtype']
-        return AttrCvt(op_name = op_type, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
-class NNDropout(ToOnnxOpConverter):
-    """ Operator converter for nn.dropout.
-    """
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v11(cls, inputs, outputs, **attrs):
+        transforms ={
+            'dilation':'dilations',
+            'groups':'group',
+            'kernel_size': 'kernel_shape',
+            'padding':'pads'
+        }
+        ignores=['channels','data_layout','kernel_layout','out_layout','out_dtype']
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
+class Conv1D(Conv):
+    """ Operator converter for nn.conv1d op."""
+class Conv2D(Conv):
+    """ Operator converter for nn.conv2d op."""
+class Conv3D(Conv):
+    """ Operator converter for nn.conv3d op."""
+class Dropout(ToOnnxOpConverter):
+    """ Operator converter for nn.dropout op."""
+    name='Dropout'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        transforms ={
+            'consumed_inputs':[0],
+            'rate':'ratio',
+            'is_test':1
+        }
+        return AttrCvt('Dropout',transforms = transforms)(inputs, outputs, **attrs)
     @classmethod
     def _impl_v10(cls, inputs, outputs, **attrs):
         transforms ={
@@ -385,22 +469,21 @@ class NNDropout(ToOnnxOpConverter):
     def _impl_v12(cls, inputs, outputs, **attrs):
         rate_name = '{}_rate'.format(outputs[0])
         rate_data = attrs['rate']
-        inputs.append(const_name)
+        inputs.append(rate_name)
         ignores=['rate']
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(rate_name, rate_data),
-                    AttrCvt('Dropout',ignores = ignores)(inputs, outputs, **attrs)]
+                    AttrCvt(cls.name,ignores = ignores)(inputs, outputs, **attrs)]
 class Reshape(ToOnnxOpConverter):
-    """ Operator converter for reshape.
-    """
+    """ Operator converter for reshape op."""
+    name = 'Reshape'
     @classmethod
     def _impl_v1(cls, inputs, outputs, **attrs):
-        op_type = 'Reshape'
         transforms ={
             'newshape':'shape'
         }
         ignores=['reverse']
-        return AttrCvt(op_name = op_type, ignores=ignores, transforms=transforms)(inputs, outputs, **attrs)
+        return AttrCvt(cls.name, ignores=ignores, transforms=transforms)(inputs, outputs, **attrs)
     @classmethod
     def _impl_v5(cls, inputs, outputs, **attrs): 
         shape_name = '{}_shape'.format(outputs[0])
@@ -408,23 +491,37 @@ class Reshape(ToOnnxOpConverter):
         inputs.append(shape_name)
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(shape_name, shape_data),
-                AttrCvt('Reshape', ignores=['newshape', 'reverse'])(inputs, outputs, **attrs)]
-class NNAvgPooliD(ToOnnxOpConverter):
-    """ Operator converter for nn.avg_poolid.
-    """
+                AttrCvt(cls.name, ignores=['newshape', 'reverse'])(inputs, outputs, **attrs)]
+class AvgPool(ToOnnxOpConverter):
+    """ Operator converter for nn.avg_poolid op."""
+    name='AveragePool'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        assert attrs.setdefault('ceil_mode', 0) == False, 'Value of attr "ceil_mode" must be False.'
+        assert attrs.setdefault('count_include_pad', 0) == False, 'Value of attr "count_include_pad" must be False.'
+        transforms ={
+            'pool_size': 'kernel_shape',
+            'padding':'pads'
+        }
+        ignores=['layout', 'ceil_mode', 'count_include_pad']
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
     @classmethod
     def _impl_v11(cls, inputs, outputs, **attrs):
-        op_type = 'AveragePool'
         transforms ={
             'pool_size': 'kernel_shape',
             'padding':'pads'
         }
         ignores=['layout']
-        return AttrCvt(op_name = op_type, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
-
-class NNPad(ToOnnxOpConverter):
-    """ Operator converter for nn.pad.
-    """
+        return AttrCvt(cls.name, transforms = transforms ,ignores = ignores)(inputs, outputs, **attrs)
+class AvgPool1D(AvgPool):
+    """ Operator converter for nn.avg_pool1d op."""
+class AvgPool2D(AvgPool):
+    """ Operator converter for nn.avg_pool2d op."""
+class AvgPool3D(AvgPool):
+    """ Operator converter for nn.avg_pool3d op."""
+class Pad(ToOnnxOpConverter):
+    """ Operator converter for nn.pad op."""
+    name = 'Pad'
     @classmethod
     def _convert_pads(cls, pads):
         l = len(pads)
@@ -434,26 +531,24 @@ class NNPad(ToOnnxOpConverter):
         return new_pads
     @classmethod
     def _impl_v1(cls, inputs, outputs, **attrs):
-        op_type = 'Pad'
         transforms ={
             'pad_value': 'value',
             'pad_mode': 'mode',
             'pad_width': ('paddings', None, cls._convert_pads)
         }
-        return AttrCvt(op_name = op_type, transforms = transforms)(inputs, outputs, **attrs)
+        return AttrCvt(cls.name, transforms = transforms)(inputs, outputs, **attrs)
 
     @classmethod
     def _impl_v2(cls, inputs, outputs, **attrs):
-        op_type = 'Pad'
         transforms ={
             'pad_value': 'value',
             'pad_mode': 'mode',
             'pad_width': ('pads', None, cls._convert_pads)
         }
-        return AttrCvt(op_name = op_type, transforms = transforms)(inputs, outputs, **attrs)
+        return AttrCvt(cls.name, transforms = transforms)(inputs, outputs, **attrs)
     @classmethod
     def _impl_v11(cls, inputs, outputs, **attrs):
-        assert attrs['pad_mode']=='constant', 'For opset=11, \"pad_mode\" must be \"constant\".'
+        assert attrs.setdefault('pad_mode', 'constant') is 'constant', 'For opset=11, "pad_mode" must be "constant".'
         pads_name = '{}_pads'.format(outputs[0])
         pads_data = cls._convert_pads(attrs['pad_width'])
         constant_value_name = '{}_constant_value'.format(outputs[0])
@@ -464,11 +559,11 @@ class NNPad(ToOnnxOpConverter):
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(pads_name, pads_data),
                 make_const_node(constant_value_name, constant_value_data),
-                AttrCvt('Pad', ignores=ignores)(inputs, outputs, **attrs)]
+                AttrCvt(cls.name, ignores=ignores)(inputs, outputs, **attrs)]
 
 class BroadcastTo(ToOnnxOpConverter):
-    """ Operator converter for broadcast_to.
-    """
+    """ Operator converter for broadcast_to op."""
+    name = 'Expand'
     @classmethod
     def _impl_v8(cls, inputs, outputs, **attrs):
         shape_name = '{}_shape'.format(outputs[0])
@@ -477,28 +572,33 @@ class BroadcastTo(ToOnnxOpConverter):
         ignores = ['shape', 'dtype']
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(shape_name, shape_data),
-                AttrCvt('Expand', ignores=ignores)(inputs, outputs, **attrs)]
+                AttrCvt(cls.name, ignores=ignores)(inputs, outputs, **attrs)]
 class Split(ToOnnxOpConverter):
-    """ Operator converter for split.
-    """
+    """ Operator converter for split op."""
+    name = 'Split'
     @classmethod
-    def _impl_v11(cls, inputs, outputs, **attrs):
-        assert 'size_axis' in attrs, 'Additional parameter \"size_axis\" is not defined.'
-        def convert_split(indices, size_axis):
-            split = [None]*(len(indices)+1)
-            split[0] = indices[0] - 0
-            for i in range(len(indices)-1):
-                split[i+1] = indices[i+1] - indices[i]
-            split[-1] = size_axis - indices[-1]
-            return split
-        extras={'split': convert_split(attrs['indices_or_sections'], attrs['size_axis'])}
-        return AttrCvt('Split', extras=extras, ignores=['size_axis', 'indices_or_sections'])(inputs, outputs, **attrs)
-class Tile(ToOnnxOpConverter):
-    """ Operator converter for tile.
-    """
+    def convert_split(cls, indices, size_axis):
+        split = [None]*(len(indices)+1)
+        split[0] = indices[0] - 0
+        for i in range(len(indices)-1):
+            split[i+1] = indices[i+1] - indices[i]
+        split[-1] = size_axis - indices[-1]
+        return split
     @classmethod
     def _impl_v1(cls, inputs, outputs, **attrs):
-        return AttrCvt('Tile', {'reps':'repeats'})(inputs, outputs, **attrs)
+        extras={'split': cls.convert_split(attrs['indices_or_sections'], attrs['size_axis'])}
+        return AttrCvt(cls.name, extras=extras, ignores=['size_axis', 'indices_or_sections'])(inputs, outputs, **attrs)
+
+    @classmethod
+    def _impl_v11(cls, inputs, outputs, **attrs):
+        extras={'split': cls.convert_split(attrs['indices_or_sections'], attrs['size_axis'])}
+        return AttrCvt(cls.name, extras=extras, ignores=['size_axis', 'indices_or_sections'])(inputs, outputs, **attrs)
+class Tile(ToOnnxOpConverter):
+    """ Operator converter for tile op."""
+    name = 'Tile'
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        return AttrCvt(cls.name, {'reps':'repeats'})(inputs, outputs, **attrs)
     @classmethod
     def _impl_v6(cls, inputs, outputs, **attrs):
         repeats_name = '{}_repeats'.format(outputs[0])
@@ -506,10 +606,10 @@ class Tile(ToOnnxOpConverter):
         inputs.append(repeats_name)
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(repeats_name, repeats_data),
-                AttrCvt('Tile', ignores = ['reps'])(inputs, outputs, **attrs)]
+                AttrCvt(cls.name, ignores = ['reps'])(inputs, outputs, **attrs)]
 class Resize(ToOnnxOpConverter):
-    """Operator converter for image.resize
-    """
+    """Operator converter for image.resize op."""
+    name = 'Resize'
     @classmethod
     def _convert_mode(cls, method):
         if method== 'nearest_neighbor':
@@ -518,7 +618,7 @@ class Resize(ToOnnxOpConverter):
             return 'linear'
         else:
             raise tvm.error.OpAttributeInvalid(
-                'Value {} in attribute "method" of operator image.resize is not valid.'.format(method))
+                'Value {} in attribute "method" of op image.resize is not valid.'.format(method))
     @classmethod
     def _impl_v11(cls, inputs, outputs, **attrs):
         roi_name = '{}_roi'.format(outputs[0])
@@ -534,35 +634,33 @@ class Resize(ToOnnxOpConverter):
         return [make_const_node(roi_name, roi_data),
                 make_const_node(scales_name, scales_data),
                 make_const_node(sizes_name, sizes_data),
-                AttrCvt('Resize', {'method':('mode', None, cls._convert_mode)},ignores = ['size', 'layout', 'out_dtype'])(inputs, outputs, **attrs)]        
+                AttrCvt(cls.name, {'method':('mode', None, cls._convert_mode)},ignores = ['size', 'layout', 'out_dtype'])(inputs, outputs, **attrs)]        
 class Reduce(ToOnnxOpConverter):
-    """ Operator converter for reduce ops.
-    """
+    """ Operator converter for reduce op."""
     name = ''
     @classmethod
     def _impl_v1(cls, inputs, outputs, **attrs):
-        assert exclude==False, 'Value \"exclude\" can not be True.'
-        return AttrCvt(cls.name,transforms={'axis':'axes'}, ignores=[exclude])(inputs, outputs, **attrs)
+        assert attrs.setdefault('exclude', 0) == False, 'Value "exclude" can not be True.'
+        return AttrCvt(cls.name,transforms={'axis':'axes'}, ignores=['exclude'])(inputs, outputs, **attrs)
 
 class Max(Reduce):
-    """ Operator converter for max.
-    """
+    """ Operator converter for max op."""
     name = 'ReduceMax'
 class Min(Reduce):
-    """ Operator converter for min.
-    """
+    """ Operator converter for min op."""
     name = 'ReduceMin'
 class Sum(Reduce):
-    """ Operator converter for sum.
-    """
+    """ Operator converter for sum op."""
     name = 'ReduceSum'
+class Mean(Reduce):
+    """ Operator converter for sum op."""
+    name = 'ReduceMean'
 class Prod(Reduce):
-    """ Operator converter for prod.
-    """
+    """ Operator converter for prod op."""
     name = 'ReduceProd'
-class NNUpsampling(ToOnnxOpConverter):
-    """ Operator converter for upsample (nearest mode).
-    """
+class Upsampling(ToOnnxOpConverter):
+    """ Operator converter for upsample (nearest mode) op."""
+    name = 'Upsample'
     @classmethod
     def _convert_mode(cls, method):
         if method == 'nearest_neighbor':
@@ -571,38 +669,142 @@ class NNUpsampling(ToOnnxOpConverter):
             return 'linear'
         else:
             raise tvm.error.OpAttributeInvalid(
-                'Value {} in attribute "method" of operator Upsample is not valid.'.format(method))
+                'Value {} in attribute "method" of op Upsample is not valid.'.format(method))
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        assert attrs.setdefault('align_corners', 1) == True, 'Value "align_corners" must be True.'
+        transforms={'method':('mode',None,cls._convert_mode),
+                    'scale_h':'height_scale',
+                    'scale_w':'weight_scale'}
+        ignores=['layout', 'align_corners']
+        return AttrCvt(cls.name,
+                        transforms=transforms,
+                        ignores=ignores
+                        )(inputs, outputs, **attrs)
     @classmethod
     def _impl_v9(cls, inputs, outputs, **attrs):
-        assert attrs['align_corners']==True, 'Value \"align_corners\" need to be True.'
+        assert attrs.setdefault('align_corners', 1) == True, 'Value "align_corners" must be True.'
         scales_name = '{}_scales'.format(outputs[0])
         scales_data = [1.0, 1.0, attrs['scale_h'],attrs['scale_w']]
         inputs.append(scales_name)
         make_const_node = Constant.get_converter(cls.opset)
         return [make_const_node(scales_name, scales_data),
-                AttrCvt('Upsample',
+                AttrCvt(cls.name,
                         transforms={'method':('mode',None,cls._convert_mode)},
                         ignores=['scale_h', 'scale_w', 'layout', 'align_corners']
                         )(inputs, outputs, **attrs)]
-class Mean(ToOnnxOpConverter):
-    """ Operator converter for mean.
-    """
+class StridedSlice(ToOnnxOpConverter):
+    """ Operator converter for strided_slice op."""
+    name = 'Slice'
     @classmethod
-    def _impl_v6(cls,  inputs, outputs, **attrs):
-        return AttrCvt('Mean',extras={'consumed_inputs':[]},ignores=['axis','keepdims'])(inputs, outputs, **attrs)
+    def _impl_v1(cls,  inputs, outputs, **attrs):
+        assert not attrs.setdefault('strides',[]), 'Value of "strides" must be empty.'
+        return AttrCvt(cls.name,
+                       transforms={'begin': 'starts',
+                                   'end': 'ends'},
+                       extras={'axes':[i for i in range(0, len(attrs['begin']))]},
+                       ignores=['strides'])(inputs, outputs, **attrs) 
     @classmethod
-    def _impl_v6(cls,  inputs, outputs, **attrs):
-        return AttrCvt('Mean',ignores=['axis','keepdims'])(inputs, outputs, **attrs)
+    def _impl_v10(cls,  inputs, outputs, **attrs):
+        starts_name = '{}_starts'.format(outputs[0])
+        starts_data = attrs['begin']
+        inputs.append(starts_name)
+        ends_name = '{}_ends'.format(outputs[0])
+        ends_data = attrs['end']
+        inputs.append(ends_name)
+        axes_name = '{}_axes'.format(outputs[0])
+        axes_data = [i for i in range(0, len(attrs['begin']))]
+        inputs.append(axes_name)
+        steps_name = '{}_steps'.format(outputs[0])
+        steps_data = attrs['strides']
+        inputs.append(steps_name)
+        make_const_node = Constant.get_converter(cls.opset)
+        return [make_const_node(starts_name, starts_data),
+                make_const_node(ends_name, ends_data),
+                make_const_node(axes_name, axes_data),
+                make_const_node(steps_name, steps_data),
+            AttrCvt(cls.name,ignores=['begin', 'end', 'strides'])(inputs, outputs, **attrs)]    
     @classmethod
-    def _impl_v8(cls,  inputs, outputs, **attrs):
-        return AttrCvt('Mean',ignores=['axis','keepdims'])(inputs, outputs, **attrs)
+    def _impl_v11(cls,  inputs, outputs, **attrs):
+        return cls._impl_v10(inputs, outputs, **attrs)
+class SubPixel(ToOnnxOpConverter):
+    """ Operator converter for sub pixel ops."""
+    name = ''
+    @classmethod
+    def _impl_v1(cls,  inputs, outputs, **attrs):
+        assert attrs.setdefault('mode', 'DCR') is 'DCR', 'Value of attr "mode" must be "DCR"'
+        return AttrCvt('DepthToSpace', ignores=['layout','mode'])(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v11(cls,  inputs, outputs, **attrs):
+        return AttrCvt('DepthToSpace', ignores=['layout'])(inputs, outputs, **attrs)
+class DepthToSpace(SubPixel):
+    """ Operator converter for nn.depth_to_space op."""
+    name = 'DepthToSpace'
+class SpaceToDepth(SubPixel):
+    """ Operator converter for nn.space_to_depth op."""
+    name = 'SpaceToDepth'
+class OneHot(ToOnnxOpConverter):
+    """ Operator converter for one_hot op."""
+    name = 'OneHot'
+    @classmethod
+    def _impl_v9(cls,  inputs, outputs, **attrs):
+        depth_name = '{}_depth'.format(outputs[0])
+        depth_data = attrs.setdefault('depth', 1)
+        inputs.insert(1,depth_name)
+        make_const_node = Constant.get_converter(cls.opset)
+        return [make_const_node(depth_name, depth_data),
+                AttrCvt(cls.name, ignores=['dtype','depth'])(inputs, outputs, **attrs)]
+    @classmethod
+    def _impl_v11(cls,  inputs, outputs, **attrs):
+        depth_name = '{}_depth'.format(outputs[0])
+        depth_data = attrs.setdefault('depth', 1)
+        inputs.insert(1,depth_name)
+        make_const_node = Constant.get_converter(cls.opset)
+        return [make_const_node(depth_name, depth_data),
+                AttrCvt(cls.name, ignores=['dtype','depth'])(inputs, outputs, **attrs)]
+class Broadcast(ToOnnxOpConverter):
+    """ Operator converter for binary op whose pattern is broadcast."""
+    name = ''
+    @classmethod
+    def _impl_v1(cls, inputs, outputs, **attrs):
+        extras = {'axis':0,'broadcast':1, 'consumed_inputs':[0,0]}
+        return AttrCvt(cls.name, extras = extras)(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v6(cls, inputs, outputs, **attrs):
+        extras = {'axis':0,'broadcast':1}
+        return AttrCvt(cls.name, extras = extras)(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v7(cls, inputs, outputs, **attrs):
+        return AttrCvt(cls.name)(inputs, outputs, **attrs)
+class Add(Broadcast):
+    """ Operator converter for add op."""
+    name = 'Add'
+class Sub(Broadcast):
+    """ Operator converter for sub op."""
+    name = 'Sub'
+class Multiply(Broadcast):
+    """ Operator converter for multiply op."""
+    name = 'Mul'
+class Divide(Broadcast):
+    """ Operator converter for divide op."""
+    name = 'Div'
+class Gemm(ToOnnxOpConverter):
+    """ Operator converter for fused_gemm op."""
+    name = 'Gemm'
+    @classmethod
+    def _impl_v1(cls,  inputs, outputs, **attrs):
+        return AttrCvt(cls.name, extras={'broadcast': 1})(inputs, outputs, **attrs)
+    @classmethod
+    def _impl_v7(cls,  inputs, outputs, **attrs):
+        return AttrCvt(cls.name)(inputs, outputs, **attrs)
+
 class ONNXRenamer(object):
-    """A simply renamer for operators.
+    """A simply renamer for ops.
 
     Parameters
     ----------
     new_name : str
-        The new name for the operator
+        The new name for the op
     """
     def __init__(self, new_name):
         self._new_name = new_name
@@ -610,13 +812,13 @@ class ONNXRenamer(object):
     def __call__(self, **params):
         return helper.make_node(self._new_name, **params)
 
-# compatible operators that do NOT require any conversion.
+# compatible ops that do NOT require any conversion.
 _identity_list = []
 
 
 # _convert_map defines maps of name to converter functor(callable)
 # for 1 to 1 mapping, use Renamer if nothing but name is different
-# use AttrCvt if attributes need to be converted
+# use AttrCvt if attributes must be converted
 # for 1 to N mapping(composed), use custom callable functions
 # for N to 1 mapping, currently not supported(?)
 def _get_convert_map(opset):
@@ -637,7 +839,7 @@ def _get_convert_map(opset):
         # 'MeanVarianceNormalization'
         # 'Crop'
         # 'Embedding'
-        'nn.upsampling': NNUpsampling.get_converter(opset),
+        'nn.upsampling': Upsampling.get_converter(opset),
         #'SpatialBN': has been simplified.
 
         # defs/generator
@@ -650,10 +852,10 @@ def _get_convert_map(opset):
         # defs/logical
 
         # defs/math
-        'add': ONNXRenamer('Add'),
-        'sub':ONNXRenamer('Sub'),
-        'multiply': ONNXRenamer('Mul'),
-        'divide': ONNXRenamer('Div'),
+        'add': Add.get_converter(opset),
+        'sub':Sub.get_converter(opset),
+        'multiply': Multiply.get_converter(opset),
+        'divide': Divide.get_converter(opset),
         'negative': ONNXRenamer('Neg'),
         'abs': ONNXRenamer('Abs'),
         #'Reciprocal': has been simplified.
@@ -675,35 +877,36 @@ def _get_convert_map(opset):
         #'HardSigmoid': has been simplified.
         'maximum': ONNXRenamer('Max'),
         'minimum':  ONNXRenamer('Min'),
-        #'Sum': has been simplified.
         'clip': AttrCvt('Clip', {'a_min': 'min', 'a_max': 'max'}),
         # softmax default axis is different in onnx
         'nn.softmax': ONNXRenamer('Softmax'),
         'nn.log_softmax': ONNXRenamer('LogSoftmax'),
-        #'OneHot': OneHot.get_converter(opset),
+        'one_hot': OneHot.get_converter(opset),
         # 'Hardmax'
         #'Softsign': has been simplified.
         #'SoftPlus': has been simplified.
-        'fused_gemm': ONNXRenamer('Gemm'),
+        'fused_gemm': Gemm.get_converter(opset),
         #'MatMul': MatMul.get_converter(opset),
 
         # defs/nn
-        'nn.avg_pool1d':NNAvgPooliD.get_converter(opset),
-        'nn.avg_pool2d':NNAvgPooliD.get_converter(opset),
-        'nn.avg_pool3d':NNAvgPooliD.get_converter(opset),
-        'nn.max_pool2d': NNMaxPool.get_converter(opset),
-        'nn.conv1d': NNConviD.get_converter(opset),
-        'nn.conv2d': NNConviD.get_converter(opset),
-        'nn.conv3d': NNConviD.get_converter(opset),
-        'nn.conv2d_transpose': NNConviDTranspose.get_converter(opset),
-        'nn.conv1d_transpose': NNConviDTranspose.get_converter(opset),
+        'nn.avg_pool1d':AvgPool1D.get_converter(opset),
+        'nn.avg_pool2d':AvgPool2D.get_converter(opset),
+        'nn.avg_pool3d':AvgPool3D.get_converter(opset),
+        'nn.max_pool1d': MaxPool1D.get_converter(opset),
+        'nn.max_pool2d': MaxPool2D.get_converter(opset),
+        'nn.max_pool3d': MaxPool3D.get_converter(opset),
+        'nn.conv1d': Conv1D.get_converter(opset),
+        'nn.conv2d': Conv2D.get_converter(opset),
+        'nn.conv3d': Conv3D.get_converter(opset),
+        'nn.conv1d_transpose': Conv1DTranspose.get_converter(opset),
+        'nn.conv2d_transpose': Conv2DTranspose.get_converter(opset),
         'nn.global_avg_pool2d': AttrCvt(op_name = 'GlobalAveragePool', ignores=['layout']),
         'nn.global_max_pool2d': ONNXRenamer('GlobalMaxPool'),
-        'nn.batch_norm': NNBatchNorm.get_converter(opset),
+        'nn.batch_norm': BatchNorm.get_converter(opset),
         'nn.instance_norm': ONNXRenamer('InstanceNormalization'), # _impl_v1
         # 'LpNormalization'
-        'nn.dropout': NNDropout.get_converter(opset),
-        'nn.batch_flatten': NNBatchFlatten.get_converter(opset),
+        'nn.dropout': Dropout.get_converter(opset),
+        'nn.batch_flatten': BatchFlatten.get_converter(opset),
         'nn.lrn': AttrCvt(op_name = 'LRN', ignores=['axis']),
         # Recurrent Layers
         #'LSTM': LSTM.get_converter(opset),
@@ -724,14 +927,14 @@ def _get_convert_map(opset):
         'broadcast_to': BroadcastTo.get_converter(opset),  # Expand
         'concatenate': ONNXRenamer('Concat'),
         'split': Split.get_converter(opset),
-        #'Slice': Slice.get_converter(opset),
+        'strided_slice': StridedSlice.get_converter(opset),
         'transpose': AttrCvt('Transpose', {'axes': 'perm'}),
-        #'DepthToSpace': DepthToSpace.get_converter(opset),
-        #'SpaceToDepth': SpaceToDepth.get_converter(opset),
+        'nn.depth_to_space': DepthToSpace.get_converter(opset),
+        'nn.space_to_depth': SpaceToDepth.get_converter(opset),
         'take': ONNXRenamer('Gather'), # Gather
         'squeeze': AttrCvt('Squeeze', {'axis':'axes'}),
         'fused_unsqueeze': ONNXRenamer('Unsqueeze'),
-        'nn.pad': NNPad.get_converter(opset),
+        'nn.pad': Pad.get_converter(opset),
         'shape_of': AttrCvt('Shape', ignores=['dtype']),
         'sign': ONNXRenamer('Sign'),
         'equal': ONNXRenamer('Equal'),
@@ -751,21 +954,27 @@ def get_func_name_attrs(name, func_attrs):
             if call.op.name == 'nn.dense' and call.args[0].op.name == 'multiply':
                 new_attrs['alpha'] = np.asscalar(call.args[0].args[0].data.asnumpy())
                 if isinstance( call.args[0].args[1], Call) and  call.args[0].args[1].op.name is 'transpose':
-                    new_attrs['transB'] = False
+                    new_attrs['transB'] = 0
                 else:
-                    new_attrs['transB'] = True
+                    new_attrs['transB'] = 1
             elif call.op.name == 'nn.batch_flatten':
                 if isinstance(call.args[0], Call) and call.args[0].op.name == 'transpose':
-                    new_attrs['transA'] = True
+                    new_attrs['transA'] = 1
                 else:
-                    new_attrs['transA'] = False
+                    new_attrs['transA'] = 0
             elif call.op.name == 'nn.bias_add' and call.args[1].op.name == 'multiply':
                 new_attrs['beta'] = np.asscalar(call.args[1].args[0].data.asnumpy())
     elif name == 'fused_unsqueeze':
-        new_attrs['axes'] = [] 
+        new_attrs['axes'] = []
         for call, attrs in func_attrs.items():
             new_attrs['axes'].append(attrs['axis'])
         new_attrs['axes'].reverse()
+    elif name == 'fused_one_hot':
+        name = 'one_hot'
+        for call, attrs in func_attrs.items():
+            if call.op.name == name:
+                new_attrs = attrs
+                break
     else:
         def get_func_major_op(func_name):
             return func_name.replace('_nn_', '_nn.').split('_')[1]
@@ -840,7 +1049,7 @@ class GraphVisitor(ExprVisitor):
                 if c.attrs is not None:
                     self.node_map[c].update(convert_tvm_object_for_py(c.attrs))
             elif isinstance(c.op, Function):
-                func_name = c.op.get_attribute('Name').value
+                func_name = str(c.op.attrs['Name'])
                 self.in_func = True
                 self.visit(c.op)
                 self.in_func = False
@@ -913,7 +1122,7 @@ class GraphProto(object):
         """Construct ONNX graph from Relay Function.
         Parameters
         ----------
-        model : tvm.IRModule or tvm.relay.Function
+        model : tvm.IRModule or _op.Function
             The relay module for compilation
         params : dict of str to tvm.nd.NDArray
             The parameter dict to be used by relay
@@ -926,8 +1135,8 @@ class GraphProto(object):
         onnx_model : onnx protobuf object
             The returned onnx graph
         """
-        # Fuse operator
-        model = self._fuse_operator(model)
+        # Fuse op
+        model = self._fuse_op(model)
         func = model['main']
         # Traverse the Relay function and record the nodes.
         visitor = ExprCountor()
@@ -957,7 +1166,7 @@ class GraphProto(object):
                     node_params['size_axis']=call.args[0].checked_type.concrete_shape[node_params['axis']]
                 elif call.op.name=='image.resize' and self._opset >= 11:
                     node_params['sizes']=call.checked_type.concrete_shape
-            node = self._convert_operator(**node_params)
+            node = self._convert_op(**node_params)
             if isinstance(node, NodeProto):
                 self._nodes.append(node)
             else:
@@ -985,16 +1194,16 @@ class GraphProto(object):
         onnx_model = helper.make_model(graph, opset_imports=[onnx_id])
         return onnx_model
        
-    def _convert_operator(self,
+    def _convert_op(self,
                           op_name,
                           **params):
-        """Convert Relay operator into a ONNX operator.
+        """Convert Relay op into a ONNX op.
         Parameters
         ----------
         op_name : str
             Operator name, such as nn.conv2d, nn.dense
         params : dict
-            Dict of operator parameters
+            Dict of op parameters
         Returns
         -------
         sym : onnx.NodeProto
@@ -1008,62 +1217,89 @@ class GraphProto(object):
                 "Operator {} not implemented.".format(op_name))
         return sym
     
-    def _fused_xx_nn_bias(self, model):
-        """Fuse the series of convolution operators and bias add operators"""
-        model = PartitionGraphInOrder(
-            op_names = ['nn.bias_add', None],
-            func_name = True
-        )(model)
-        return model
+    def _fused_xx_nn_bias(self):
+        """Fuse the series of convolution ops and bias add ops"""
+        return PartitionGraphInOrder(
+            op_attrs = [('nn.bias_add',None), None],
+            func_name = ''
+        )
 
-    def _fused_gemm(self, model):
-        """Fuse operatprs to gemm operator"""
+    def _fused_gemm(self):
+        """Fuse operatprs to gemm op"""
         def gemm(transA, transB):
-            A = tvm.relay.var('A', shape=(1,1))
-            B = tvm.relay.var('B', shape=(1,1))
-            C = tvm.relay.var('C', shape=(1,1))
-            alpha = tvm.relay.const(1.0)
-            beta = tvm.relay.const(1.0)
+            A = new_var('A', shape=(1,1))
+            B = new_var('B', shape=(1,1))
+            C = new_var('C', shape=(1,1))
+            alpha = _op.const(1.0)
+            beta = _op.const(1.0)
             _A, _B = A, B
             if transA:
-                _A = tvm.relay.transpose(_A, axes=(1, 0))
+                _A = _op.transpose(_A, axes=(1, 0))
             if transB:
-                _B = tvm.relay.transpose(_B, axes=(1, 0))
-            _A = tvm.relay.nn.batch_flatten(_A)
-            aA_B = tvm.relay.nn.dense(alpha * _A, _B, units=1)
-            out = tvm.relay.nn.bias_add(aA_B,beta*C)
+                _B = _op.transpose(_B, axes=(1, 0))
+            _A = _op.nn.batch_flatten(_A)
+            aA_B = _op.nn.dense(alpha * _A, _B, units=1)
+            out = _op.nn.bias_add(aA_B,beta*C)
             return tvm.relay.Function([A,B,C],out)
+        passes = []
         for i in range(0,2):
-            model = PartitionGraphByExpr(
+            passes.append(PartitionGraphByExpr(
                 subexpr = gemm(i,1-i),
                 func_name = "fused_gemm"
-            )(model)
-            model = PartitionGraphByExpr(
+            ))
+            passes.append(PartitionGraphByExpr(
                 subexpr=gemm(i,i),
                 func_name = 'fused_gemm'
-            )(model)
-        return model
+            ))
+        return passes
 
-    def _fused_unsqueeze(self, model):
-        """Fuse expand_dims operators to unsqueeze operator."""
-        model = PartitionGraphInUnorder(
-            op_names = ['expand_dims'],
+    def _fused_unsqueeze(self):
+        """Fuse expand_dims ops to unsqueeze op."""
+        return PartitionGraphInUnorder(
+            op_attrs = [('expand_dims',None)],
             func_name = 'fused_unsqueeze',
-        )(model)
-        return model
+        )
+    
+    def _fused_one_hot(self):
+        """Fuse expand_dims ops to unsqueeze op."""
+        def onehot():
+            indices = new_var('indices',shape = (3,))
+            values = new_var('values')
+            off_value, on_value = _op.take(values,_op.const(0)), _op.take(values, _op.const(1))
+            out = _op.one_hot(indices, on_value, off_value, depth = 1, axis=-1, dtype=None) # set as default.
+            return tvm.relay.Function([indices, values],out)
+        return PartitionGraphByExpr(
+            subexpr = onehot(),
+            func_name = 'fused_one_hot',
+        )
 
-    def _fuse_operator(self, model):
-        "Fuse the Relay operators to fit ONNX model"
-        model = self._fused_gemm(model)
-        model = self._fused_xx_nn_bias(model)
-        model = self._fused_unsqueeze(model)
-        return model
+    def _fuse_op(self, model):
+        "Fuse the Relay ops to fit ONNX model"
+        return Sequential(self._fused_gemm()+[self._fused_xx_nn_bias(), self._fused_unsqueeze(), self._fused_one_hot()])(model) 
+def to_onnx_check_non_suppoted_op(tar_ops):
+    """Check if operators in list are not supported for Relay to ONNX conversion.
+    Parameters
+    ----------
+    tar_ops : list of str
+        The target operator names.
+    Returns
+    -------
+    no_ops : list of str
+        The operator names which is not supported by TVM.
+    """
+    no_ops = []
+    exception = ['nn.bias_add']
+    ops = _get_convert_map(1).keys()
+    for op in tar_ops:
+        if op not in ops and op not in exception: # nn.bias_add is exception.
+            no_ops.append(op)
+    return no_ops
 
 def to_onnx(model, params, graph_name="", doc_string=None, opset = None):
     """Convert a Relay Function into ONNX model.
     Parameters
     ----------
-    model : tvm.IRModule or tvm.relay.Function
+    model : tvm.IRModule or _op.Function
         The relay module for compilation
     params : dict of str to tvm.nd.NDArray
         The parameter dict to be used by relay
@@ -1083,7 +1319,7 @@ def to_onnx(model, params, graph_name="", doc_string=None, opset = None):
             opset = 11
     if isinstance(model, tvm.IRModule):
         pass
-    elif isinstance(model, tvm.relay.Function):
+    elif isinstance(model, _op.Function):
         model = IRModule.from_expr(model)
     else:
         raise TypeError(

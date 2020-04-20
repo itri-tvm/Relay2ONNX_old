@@ -120,6 +120,7 @@ def decl_tensor_intrin(op,
     binds_list = []
     for t in inputs:
         if not isinstance(t.op, PlaceholderOp):
+            print(t)
             raise ValueError("Do not yet support composition op")
 
     cfg = BuildConfig.current()

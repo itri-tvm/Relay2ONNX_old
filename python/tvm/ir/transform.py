@@ -27,7 +27,7 @@ from tvm.runtime import Object, ndarray as _nd
 
 from . import _ffi_transform_api
 
-@tvm._ffi.register_object("relay.PassInfo")
+@tvm._ffi.register_object("transform.PassInfo")
 class PassInfo(Object):
     """The class contains the meta data required by a pass. It is the
     container of information needed by running an optimization or analysis.
@@ -51,7 +51,7 @@ class PassInfo(Object):
             _ffi_transform_api.PassInfo, opt_level, name, required)
 
 
-@tvm._ffi.register_object("relay.PassContext")
+@tvm._ffi.register_object("transform.PassContext")
 class PassContext(Object):
     """The basis where a Relay optimization/analysis runs on.
     Each pass context contains a number of auxiliary information that is used
@@ -82,7 +82,7 @@ class PassContext(Object):
         elif isinstance(fallback_device, TVMContext):
             fallback_device = fallback_device.device_type
         if not isinstance(fallback_device, int):
-            raise TypeError("required_pass is expected to be the type of " +
+            raise TypeError("fallback_device is expected to be the type of " +
                             "int/str/TVMContext.")
 
         required = list(required_pass) if required_pass else []
@@ -112,7 +112,7 @@ class PassContext(Object):
         return _ffi_transform_api.GetCurrentPassContext()
 
 
-@tvm._ffi.register_object("relay.Pass")
+@tvm._ffi.register_object("transform.Pass")
 class Pass(Object):
     """The base class of all passes. All methods here are just simple wrappers
     that are implemented in the backend. They are defined for users to
@@ -141,7 +141,7 @@ class Pass(Object):
         return _ffi_transform_api.RunPass(self, mod)
 
 
-@tvm._ffi.register_object("relay.ModulePass")
+@tvm._ffi.register_object("transform.ModulePass")
 class ModulePass(Pass):
     """A pass that works on tvm.IRModule. Users don't need to interact with
     this class directly. Instead, a module pass should be created through
@@ -152,7 +152,7 @@ class ModulePass(Pass):
     """
 
 
-@tvm._ffi.register_object("relay.Sequential")
+@tvm._ffi.register_object("transform.Sequential")
 class Sequential(Pass):
     """A pass that works on a sequence of pass objects. Multiple passes can be
     executed sequentially using this class.
@@ -160,7 +160,8 @@ class Sequential(Pass):
     Some typical usage of the sequential pass are:
     1. Users provide a list of passes for optimization.
     2. Only an optimization level is provided so that the backend system has
-       to glob all passes at this level and below to perform the optimizations.
+    to glob all passes at this level and below to perform the optimizations.
+
     Note that users can also provide a series of passes that they don't want to
     apply when running a sequential pass. Pass dependency will be resolved in
     the backend as well.

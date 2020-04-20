@@ -18,11 +18,12 @@
  */
 
 /*!
- * \file src/tvm/ir/expr.cc
+ * \file src/ir/expr.cc
  * \brief The expression AST nodes for the common IR infra.
  */
 #include <tvm/runtime/registry.h>
 #include <tvm/ir/expr.h>
+#include <tvm/ir/function.h>
 // NOTE: reverse dependency on top/tir.
 // These dependencies do not happen at the interface-level,
 // and are only used in minimum cases where they are clearly marked.
@@ -39,21 +40,24 @@ PrimExpr::PrimExpr(int32_t value)
 PrimExpr::PrimExpr(float value)
     : PrimExpr(FloatImm(DataType::Float(32), value)) {}
 
-PrimExpr::PrimExpr(std::string str)
-    : PrimExpr(tir::StringImmNode::make(str)) {}
+PrimExpr::PrimExpr(runtime::String value)
+    : PrimExpr(tir::StringImmNode::make(value)) {}
 
-PrimExpr PrimExpr::FromObject_(ObjectPtr<Object> ptr) {
+PrimExpr PrimExpr::FromObject_(ObjectRef ref) {
   using runtime::ObjectTypeChecker;
-  if (ptr->IsInstance<tir::IterVarNode>()) {
-    return tir::IterVar(ptr)->var;
+  if (auto* ptr = ref.as<tir::IterVarNode>()) {
+    return GetRef<tir::IterVar>(ptr)->var;
   }
-  if (ptr->IsInstance<te::TensorNode>()) {
-    return te::Tensor(ptr)();
+  if (auto* ptr = ref.as<te::TensorNode>()) {
+    return GetRef<te::Tensor>(ptr)();
   }
-  CHECK(ObjectTypeChecker<PrimExpr>::Check(ptr.get()))
+  if (auto* ptr = ref.as<runtime::StringObj>()) {
+    return tir::StringImmNode::make(GetRef<runtime::String>(ptr));
+  }
+  CHECK(ObjectTypeChecker<PrimExpr>::Check(ref.get()))
       << "Expect type " << ObjectTypeChecker<PrimExpr>::TypeName()
-      << " but get " << ptr->GetTypeKey();
-  return PrimExpr(ptr);
+      << " but get " << ref->GetTypeKey();
+  return Downcast<PrimExpr>(ref);
 }
 
 
@@ -104,6 +108,7 @@ TVM_REGISTER_GLOBAL("ir.FloatImm")
 
 TVM_REGISTER_NODE_TYPE(FloatImmNode);
 
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<FloatImmNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const FloatImmNode*>(node.get());
@@ -134,16 +139,21 @@ Range Range::make_by_min_extent(PrimExpr min, PrimExpr extent) {
   return Range(make_object<RangeNode>(min, extent));
 }
 
+TVM_REGISTER_GLOBAL("ir.range_by_min_extent")
+.set_body_typed(Range::make_by_min_extent);
+
+TVM_REGISTER_GLOBAL("ir.Range")
+.set_body([](TVMArgs args,  TVMRetValue* ret) {
+  *ret = Range(args[0], args[1]);
+  });
+
+TVM_REGISTER_NODE_TYPE(RangeNode);
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<RangeNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const RangeNode*>(node.get());
     p->stream << "range(min=" << op->min << ", ext=" << op->extent << ')';
   });
-
-TVM_REGISTER_NODE_TYPE(ArrayNode);
-TVM_REGISTER_NODE_TYPE(MapNode);
-TVM_REGISTER_NODE_TYPE(StrMapNode);
-TVM_REGISTER_NODE_TYPE(RangeNode);
 
 
 GlobalVar::GlobalVar(std::string name_hint) {

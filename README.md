@@ -48,5 +48,5 @@ We learned a lot from the following projects when building TVM.
 
 Relay2ONNX
 ----------
-There are 66 operator conversion written in /python/tvm/relay/frontend/to_onnx.py file. For some special ONNX operators, Gemm, Conv and Unsqueeze, we create three new partition graph Relay pass (in /src/relay/pass folder) to fuse their converted Relay operators back to original ONNX operator.In some case, if nn.bias_add is not simplified by TVM optimization, these operators can be fused back to original ONNX operator. For the same reason, fuse expand_dims operators to unsqueeze operator.
+There are 70 operator conversion written in /python/tvm/relay/frontend/to_onnx.py file. For some special ONNX operators, Gemm, Conv and Unsqueeze, we create three new partition graph Relay pass (in /src/relay/pass folder) to fuse their converted Relay operators back to original ONNX operator.In some case, if nn.bias_add is not simplified by TVM optimization, these operators can be fused back to original ONNX operator. For the same reason, fuse expand_dims operators to unsqueeze operator.
 

@@ -54,7 +54,7 @@ void GraphRuntime::Run() {
   // setup the array and requirements.
   for (size_t i = 0; i < op_execs_.size(); ++i) {
     if (op_execs_[i]) op_execs_[i]();
-   }
+  }
 }
 /*!
  * \brief Initialize the graph executor with graph and context.
@@ -67,11 +67,7 @@ void GraphRuntime::Run() {
 void GraphRuntime::Init(const std::string& graph_json,
                         tvm::runtime::Module module,
                         const std::vector<TVMContext>& ctxs) {
-#ifndef _LIBCPP_SGX_NO_IOSTREAMS
   std::istringstream is(graph_json);
-#else
-  std::string is = graph_json;
-#endif
   dmlc::JSONReader reader(&is);
   this->Load(&reader);
   module_ = module;
@@ -328,9 +324,8 @@ void GraphRuntime::SetupOpExecs() {
 
   // setup the array and requirements.
   for (uint32_t nid = 0; nid < this->GetNumOfNodes(); ++nid) {
-	const auto& inode = nodes_[nid];
-	if (inode.op_type == "null") continue;
-
+    const auto& inode = nodes_[nid];
+    if (inode.op_type == "null") continue;
     std::vector<DLTensor> args;
     for (const auto& e : inode.inputs) {
       uint32_t eid = this->entry_id(e);

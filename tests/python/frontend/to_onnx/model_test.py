@@ -51,6 +51,8 @@ def print_different(before, after):
 def load_img_and_run(model_path, data_path, model_name, show_netron =False):
     print('{}...'.format(model_name))
     onnx_model = onnx.load(model_path)
+    opset = onnx_model.opset_import[0].version
+    print('Opset from:',opset)
     if show_netron:
         netron.start(model_path, port=9930)
     before_opset = onnx_model.opset_import[0].version
@@ -74,32 +76,24 @@ def load_img_and_run(model_path, data_path, model_name, show_netron =False):
     shape_dict = {k: v.shape for k,v in inputs.items()}
     output_shape = [dim.dim_value for dim in onnx_model.graph.output[0].type.tensor_type.shape.dim]
     mod, params = relay.frontend.from_onnx(onnx_model, shape=shape_dict)
-    before = str(mod)
     rt_mod = get_rt_mod(inputs, mod, params)
     before_output = rt_mod.get_output(0, tvm.nd.empty(output_shape, 'float32')).asnumpy()
-    onnx_model = relay.frontend.to_onnx(mod, params, model_name)
+    onnx_model = relay.frontend.to_onnx(mod, params, model_name,opset=opset)
     onnx.save(onnx_model, 'model.onnx')
     if show_netron:
         netron.start('model.onnx', port=3030)
     onnx_model = onnx.load('model.onnx')
     after_opset = onnx_model.opset_import[0].version
     mod, params = relay.frontend.from_onnx(onnx_model, shape=shape_dict)
-    after = str(mod)
-    print('Opset version:', before_opset,' to ',after_opset)
-    if before==after:
-        print('Graphs are the same.')
-    else:
-        print('Graphs are different.')
-        print_different(before, after)
     rt_mod = get_rt_mod(inputs, mod, params)
     after_output = rt_mod.get_output(0, tvm.nd.empty(output_shape, 'float32')).asnumpy()
-    if (before_output == after_output).all():
-        print('The outputs of are the same.')
-    else:
-        print('The outputs of are different!')
+    
+    assert np.array_equal(before_output, after_output), 'The outputs of are different!'
 def load_pb_and_run(model_path, data_path, model_name, show_netron = False):
     print('{}...'.format(model_name))
     onnx_model = onnx.load_model(model_path)
+    opset = onnx_model.opset_import[0].version
+    print('Opset from:',opset)
     if show_netron:
         netron.start(model_path)
     new_tensor = onnx.TensorProto() # 先建立一個空的 TensorProto 物件
@@ -120,30 +114,20 @@ def load_pb_and_run(model_path, data_path, model_name, show_netron = False):
     inputs = {input_name:data}
     output_shape = [dim.dim_value for dim in onnx_model.graph.output[0].type.tensor_type.shape.dim]
     mod, params = relay.frontend.from_onnx(onnx_model, shape=shape_dict)
-    before = str(mod)
     #print(before)
     rt_mod = get_rt_mod(inputs, mod, params)
     before_output = rt_mod.get_output(0, tvm.nd.empty(output_shape, 'float32')).asnumpy()
-    onnx_model = relay.frontend.to_onnx(mod, params,model_name)
+    onnx_model = relay.frontend.to_onnx(mod, params,model_name, opset=opset)
     onnx.save(onnx_model, 'model.onnx')
     if show_netron:
         netron.start('model.onnx', port=3030)
     onnx_model = onnx.load('model.onnx')
     after_opset = onnx_model.opset_import[0].version
-    mod, params = relay.frontend.from_onnx(onnx_model, shape=shape_dict)
-    after = str(mod)
-    print('Opset version:', before_opset,' to ',after_opset)
-    if before==after:
-        print('Graphs are the same.')
-    else:
-        print('Graphs are different.')
-        print_different(before, after)           
+    print(after_opset)
+    mod, params = relay.frontend.from_onnx(onnx_model, shape=shape_dict)     
     rt_mod = get_rt_mod(inputs, mod, params)
     after_output = rt_mod.get_output(0, tvm.nd.empty(output_shape, 'float32')).asnumpy()
-    if (before_output == after_output).all():
-        print('The outputs of are the same.')
-    else:
-        print('The outputs of are different!')
+    assert np.array_equal(before_output, after_output), 'The outputs of are different!'
 def lenet5(show_netron = False):
     model_name = 'lenet5'
     model_path = '../../model/lenet5/self/lenet5_0.onnx'
@@ -236,10 +220,11 @@ def efficientnet(show_netron = False):
     # save_efficientnet_from_pytorch(model_name,model_path)
     load_img_and_run(model_path,data_path, model_name, show_netron)
 if __name__ == "__main__":
-    logging.disable(logging.WARNING)             
-    mobilenetv2() # Graphs are different.
-#     resnet50() # Graphs are different.
-#     squeezenet() # Graphs are different.
+    logging.disable(logging.WARNING)
+#    lenet5()         
+#     mobilenetv2()
+#     resnet50()
+#     squeezenet()
 #     vgg19_bn()
 #     alexnet() 
 #     googlenet()
@@ -247,10 +232,9 @@ if __name__ == "__main__":
 #     rcnn()
 #     densenet121()
 #     inception_v1()
-#     inception_v2()
-#     shufflenet_v1() # Graphs are different.
+#     inception_v2() 
+#     shufflenet_v1()
 #     shufflenet_v2()
 #     zfnet512()
-#     efficientnet() # Graphs are different.
-
-    
+#     efficientnet()
+    print('Finish!')

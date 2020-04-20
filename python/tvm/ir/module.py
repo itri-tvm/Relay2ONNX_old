@@ -24,7 +24,7 @@ from . import type as _ty
 from . import _ffi_api
 
 
-@tvm._ffi.register_object("relay.Module")
+@tvm._ffi.register_object("IRModule")
 class IRModule(Node):
     """IRModule that holds functions and type definitions.
 
@@ -59,7 +59,6 @@ class IRModule(Node):
                 mapped_type_defs[k] = v
             type_definitions = mapped_type_defs
         self.__init_handle_by_constructor__(_ffi_api.IRModule, functions, type_definitions)
-
 
     def __setitem__(self, var, val):
         """Add a mapping to the module.
